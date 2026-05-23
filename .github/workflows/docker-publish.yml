@@ -2,19 +2,12 @@ name: Docker Publish
 
 on:
   push:
-    branches:
-      - main
-      - master
     tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - main
-      - master
+      - "v*" # 当推送以 v 开头的标签时触发
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Optional Docker tag to publish, for example v1.2.3'
+        description: "Optional Docker tag to publish, for example v1.2.3"
         required: false
         type: string
 
