@@ -14,6 +14,7 @@ import (
 
 	ikuaiapi "github.com/zy84338719/ikuai-api"
 	ikuaisvc "github.com/zy84338719/ikuai-api/service"
+	"github.com/zy84338719/ikuai-api/types"
 )
 
 // ───────────── 对外暴露的 DTO 类型 ─────────────
@@ -147,6 +148,50 @@ func NewMonitorService(router config.RouterConfig) *MonitorService {
 	return svc
 }
 
+func (s *MonitorService) reloginV3(ctx context.Context) error {
+	if s == nil || s.client == nil {
+		return errors.New("v3 client 未初始化")
+	}
+	if logger.Log != nil {
+		logger.Log.Warnf("v3 登录态已失效，正在重新登录爱快路由器 [%s]", s.router.Name)
+	}
+	if err := s.client.Login(ctx); err != nil {
+		s.connectionError = err.Error()
+		return err
+	}
+	s.api = ikuaisvc.NewAPIClient(s.client)
+	s.connectionError = ""
+	if logger.Log != nil {
+		logger.Log.Infof("✓ 爱快路由器 [%s] 重新登录成功", s.router.Name)
+	}
+	return nil
+}
+
+func retryV3CallWithRelogin(ctx context.Context, call func() error, relogin func(context.Context) error) error {
+	err := call()
+	if err == nil || !isV3AuthExpiredError(err) {
+		return err
+	}
+	if loginErr := relogin(ctx); loginErr != nil {
+		return loginErr
+	}
+	return call()
+}
+
+func isV3AuthExpiredError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	var sdkErr *ikuaiapi.SDKError
+	if !errors.As(err, &sdkErr) {
+		return false
+	}
+	message := strings.ToLower(sdkErr.Message)
+	return strings.Contains(message, "no login authentication") ||
+		strings.Contains(message, "client not logged in") ||
+		strings.Contains(message, "not logged in")
+}
+
 // ReplaceMonitorService 原子替换全局监控服务。
 func ReplaceMonitorService(svc *MonitorService) {
 	globalServiceMu.Lock()
@@ -220,7 +265,7 @@ func (s *MonitorService) GetInterfaceData(ctx context.Context) (*InterfaceDataRe
 	var result InterfaceDataResult
 
 	// 1. 首页摘要：上传/下载速率 + 总连接数（来自 homepage 接口）
-	homepage, err := s.api.System().GetHomepage(ctx)
+	homepage, err := s.getHomepageWithRelogin(ctx)
 	if err != nil {
 		logger.Log.Errorf("获取首页摘要数据失败: %v", err)
 		// 降级处理：摘要失败不影响后面的接口数据
@@ -234,7 +279,7 @@ func (s *MonitorService) GetInterfaceData(ctx context.Context) (*InterfaceDataRe
 	}
 
 	// 2. 接口状态与流量：来自 monitor_iface 接口
-	ifaces, err := s.api.Monitor().GetInterfaces(ctx)
+	ifaces, err := s.getInterfacesWithRelogin(ctx)
 	if err != nil {
 		logger.Log.Errorf("获取接口流量数据失败: %v", err)
 		return &result, nil
@@ -274,6 +319,26 @@ func (s *MonitorService) GetInterfaceData(ctx context.Context) (*InterfaceDataRe
 	return &result, nil
 }
 
+func (s *MonitorService) getHomepageWithRelogin(ctx context.Context) (*types.HomepageSysStat, error) {
+	var homepage *types.HomepageSysStat
+	err := retryV3CallWithRelogin(ctx, func() error {
+		var err error
+		homepage, err = s.api.System().GetHomepage(ctx)
+		return err
+	}, s.reloginV3)
+	return homepage, err
+}
+
+func (s *MonitorService) getInterfacesWithRelogin(ctx context.Context) (*types.MonitorIFaceShowResponse, error) {
+	var ifaces *types.MonitorIFaceShowResponse
+	err := retryV3CallWithRelogin(ctx, func() error {
+		var err error
+		ifaces, err = s.api.Monitor().GetInterfaces(ctx)
+		return err
+	}, s.reloginV3)
+	return ifaces, err
+}
+
 // ───────────── 局域网客户端列表 ─────────────
 
 // GetLanClients 获取按 MAC 去重并双栈聚合后的局域网客户端列表
@@ -298,7 +363,7 @@ func (s *MonitorService) GetLanClients(ctx context.Context, filterComment string
 	aggregatedMap := make(map[string]*ClientDTO)
 
 	// 1. 获取 IPv4 客户端列表
-	ipv4List, err := s.api.Monitor().GetLanIP(ctx)
+	ipv4List, err := s.getLanIPWithRelogin(ctx)
 	if err != nil {
 		logger.Log.Errorf("获取 IPv4 客户端列表失败: %v", err)
 		return nil, err
@@ -346,7 +411,7 @@ func (s *MonitorService) GetLanClients(ctx context.Context, filterComment string
 	}
 
 	// 2. 获取 IPv6 客户端，合并同一 MAC 的 IPv6 地址
-	ipv6List, err := s.api.Monitor().GetLanIPv6(ctx)
+	ipv6List, err := s.getLanIPv6WithRelogin(ctx)
 	if err != nil {
 		logger.Log.Warnf("获取 IPv6 客户端列表失败（不影响 IPv4 结果）: %v", err)
 	} else {
@@ -377,6 +442,34 @@ func (s *MonitorService) GetLanClients(ctx context.Context, filterComment string
 	}
 
 	return result, nil
+}
+
+func (s *MonitorService) getLanIPWithRelogin(ctx context.Context) ([]types.MonitorLanIPItem, error) {
+	var resp types.MonitorLanIPShowResponse
+	err := retryV3CallWithRelogin(ctx, func() error {
+		if err := s.client.Call(ctx, "monitor_lanip", "show", nil, &resp); err != nil {
+			return err
+		}
+		if !resp.IsSuccess() {
+			return ikuaiapi.NewSDKError(ikuaiapi.ErrCodeRequestFailed, resp.GetErrorMessage(), nil)
+		}
+		return nil
+	}, s.reloginV3)
+	return resp.GetData(), err
+}
+
+func (s *MonitorService) getLanIPv6WithRelogin(ctx context.Context) ([]types.MonitorLanIPv6Item, error) {
+	var resp types.MonitorLanIPv6ShowResponse
+	err := retryV3CallWithRelogin(ctx, func() error {
+		if err := s.client.Call(ctx, "monitor_lanipv6", "show", nil, &resp); err != nil {
+			return err
+		}
+		if !resp.IsSuccess() {
+			return ikuaiapi.NewSDKError(ikuaiapi.ErrCodeRequestFailed, resp.GetErrorMessage(), nil)
+		}
+		return nil
+	}, s.reloginV3)
+	return resp.GetData(), err
 }
 
 // ─────────── 高保真 Mock 数据源 ───────────
