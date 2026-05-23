@@ -1,7 +1,13 @@
 <template>
   <div class="network-map-container glass-panel">
     <div class="panel-header">
-      <h2 class="panel-title">智能网络拓扑</h2>
+      <div class="panel-heading">
+        <h2 class="panel-title">网络拓扑</h2>
+        <div v-if="hasData" class="map-stats" aria-label="拓扑统计">
+          <span>{{ nodeCount }} 节点</span>
+          <span>{{ linkCount }} 链路</span>
+        </div>
+      </div>
       <div class="panel-actions">
         <button class="btn-refresh liquid-button" @click="fetchData" :disabled="loading">
           <span v-if="loading" class="spinner"></span>
@@ -15,24 +21,31 @@
         <div class="loader"></div>
         <p>正在分析网络结构...</p>
       </div>
-      <div v-else-if="error" class="error-state">
+      <div v-else-if="error && !hasData" class="error-state">
         <p>{{ error }}</p>
         <button @click="fetchData" class="btn-retry liquid-button">重试</button>
       </div>
-      <div ref="chartRef" class="chart-container" v-show="!error"></div>
+      <div ref="chartRef" class="chart-container" v-show="hasData || loading"></div>
+      <div v-if="error && hasData" class="map-notice">
+        刷新失败：{{ error }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, shallowRef } from 'vue'
+import { nextTick, onActivated, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import * as echarts from 'echarts'
 import { fetchNetworkMap, type NetworkMapData } from '@/api/monitor'
 
 const chartRef = ref<HTMLElement | null>(null)
 const chartInstance = shallowRef<echarts.ECharts | null>(null)
+const lastData = shallowRef<NetworkMapData | null>(null)
 const loading = ref(false)
 const error = ref('')
+const hasData = ref(false)
+const nodeCount = ref(0)
+const linkCount = ref(0)
 let themeObserver: MutationObserver | null = null
 
 function cssVar(name: string) {
@@ -41,6 +54,21 @@ function cssVar(name: string) {
 
 const initChart = (data: NetworkMapData) => {
   if (!chartRef.value) return
+  const nodeIds = new Set(data.nodes.map((node) => node.id).filter(Boolean))
+  const nodes = data.nodes.map((n) => ({
+    id: n.id,
+    name: n.name || n.id,
+    value: n.ip || '',
+    category: n.category,
+    symbolSize: n.category === 0 ? 60 : (n.category === 3 ? 30 : 45),
+  }))
+  const links = data.links.filter((link) => nodeIds.has(link.source) && nodeIds.has(link.target))
+
+  nodeCount.value = nodes.length
+  linkCount.value = links.length
+  hasData.value = nodes.length > 0
+  if (!hasData.value) return
+
   if (!chartInstance.value) {
     chartInstance.value = echarts.init(chartRef.value)
   }
@@ -94,18 +122,14 @@ const initChart = (data: NetworkMapData) => {
           { name: 'LAN', itemStyle: { color: green } },
           { name: 'Device', itemStyle: { color: orange } }
         ],
-        data: data.nodes.map((n) => ({
-          name: n.name,
-          value: n.ip,
-          category: n.category,
-          symbolSize: n.category === 0 ? 60 : (n.category === 3 ? 30 : 45)
-        })),
-        links: data.links
+        data: nodes,
+        links
       }
     ]
   }
 
-  chartInstance.value.setOption(option)
+  chartInstance.value.setOption(option, true)
+  chartInstance.value.resize()
 }
 
 const fetchData = async () => {
@@ -113,6 +137,11 @@ const fetchData = async () => {
   error.value = ''
   try {
     const data = await fetchNetworkMap()
+    if (!data?.nodes?.length) {
+      throw new Error('暂无可展示的拓扑数据')
+    }
+    lastData.value = data
+    await nextTick()
     initChart(data)
   } catch (err) {
     error.value = err instanceof Error ? err.message : '网络请求错误'
@@ -126,7 +155,9 @@ const handleResize = () => {
 }
 
 const refreshTheme = () => {
-  fetchData()
+  if (lastData.value) {
+    initChart(lastData.value)
+  }
 }
 
 onMounted(() => {
@@ -134,6 +165,10 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
   themeObserver = new MutationObserver(refreshTheme)
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+})
+
+onActivated(() => {
+  void nextTick(handleResize)
 })
 
 onUnmounted(() => {
@@ -160,10 +195,36 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--glass-border);
 }
 
+.panel-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
 .panel-title {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.map-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.map-stats span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .map-content {
@@ -175,6 +236,7 @@ onUnmounted(() => {
 .chart-container {
   width: 100%;
   height: 100%;
+  min-height: inherit;
 }
 
 .loading-state, .error-state {
@@ -186,6 +248,20 @@ onUnmounted(() => {
   justify-content: center;
   gap: 16px;
   color: var(--text-secondary);
+}
+
+.map-notice {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  max-width: min(420px, calc(100% - 36px));
+  padding: 10px 12px;
+  border: 1px solid var(--system-red-dim);
+  border-radius: var(--radius-sm);
+  background: var(--glass-bg-strong);
+  color: var(--system-red);
+  box-shadow: var(--glass-shadow);
+  font-size: 13px;
 }
 
 .btn-refresh, .btn-retry {
@@ -230,6 +306,11 @@ onUnmounted(() => {
     align-items: flex-start;
     flex-direction: column;
     padding: 16px;
+  }
+
+  .panel-actions,
+  .btn-refresh {
+    width: 100%;
   }
 
   .map-content {
