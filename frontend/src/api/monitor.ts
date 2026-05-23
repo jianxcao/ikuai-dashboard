@@ -32,6 +32,24 @@ export interface IKuaiInterfaceData {
   traffic_details: IKuaiTraffic[]
 }
 
+export interface NetworkMapNode {
+  id: string
+  name: string
+  type: 'router' | 'wan' | 'lan' | 'device' | string
+  ip: string
+  category: number
+}
+
+export interface NetworkMapLink {
+  source: string
+  target: string
+}
+
+export interface NetworkMapData {
+  nodes: NetworkMapNode[]
+  links: NetworkMapLink[]
+}
+
 export interface ClientDTO {
   mac: string
   hostname: string
@@ -44,6 +62,31 @@ export interface ClientDTO {
   comment: string
   client_type: string
   uptime: string
+}
+
+export interface PortMapping {
+  name: string
+  ext_port: string
+  int_ip: string
+  int_port: string
+  protocol: string
+}
+
+export interface SecurityHubData {
+  high_risk_ports: PortMapping[]
+  abnormal_devices: ClientDTO[]
+}
+
+export interface RouteRule {
+  type: string
+  interface: string
+  target: string
+  enabled: boolean
+}
+
+export interface MultiWanData {
+  wan_status: IKuaiWanStatus[]
+  routes: RouteRule[]
 }
 
 export interface AppServerConfig {
@@ -88,8 +131,10 @@ interface RouterConfigEnvelope {
   status: MonitorServiceStatus
 }
 
+const API_BASE_URL = '/api/v1'
+
 const http = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
   timeout: 10000,
 })
 
@@ -109,6 +154,21 @@ export async function fetchInterfaceData(): Promise<IKuaiInterfaceData> {
 
 export async function fetchLanClients(search: string = ''): Promise<ClientDTO[]> {
   const res = await http.get('/monitor/lan', { params: { search } })
+  return res.data
+}
+
+export async function fetchNetworkMap(): Promise<NetworkMapData> {
+  const res = await http.get('/monitor/network-map')
+  return res.data
+}
+
+export async function fetchSecurityHub(): Promise<SecurityHubData> {
+  const res = await http.get('/monitor/security-hub')
+  return res.data
+}
+
+export async function fetchMultiWan(): Promise<MultiWanData> {
+  const res = await http.get('/monitor/multi-wan')
   return res.data
 }
 

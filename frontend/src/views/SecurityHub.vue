@@ -52,9 +52,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import { fetchSecurityHub, type SecurityHubData } from '@/api/monitor'
 
-const data = ref<any>(null)
+const data = ref<SecurityHubData | null>(null)
 const loading = ref(false)
 const error = ref('')
 
@@ -62,14 +62,9 @@ const fetchData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const res = await axios.get('http://localhost:8080/api/v1/monitor/security-hub')
-    if (res.data.code === 200) {
-      data.value = res.data.data
-    } else {
-      error.value = res.data.message || '数据获取失败'
-    }
-  } catch (err: any) {
-    error.value = err.message || '请求错误'
+    data.value = await fetchSecurityHub()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '请求错误'
   } finally {
     loading.value = false
   }

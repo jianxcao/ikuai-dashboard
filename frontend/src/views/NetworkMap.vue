@@ -26,8 +26,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, shallowRef } from 'vue'
-import axios from 'axios'
 import * as echarts from 'echarts'
+import { fetchNetworkMap, type NetworkMapData } from '@/api/monitor'
 
 const chartRef = ref<HTMLElement | null>(null)
 const chartInstance = shallowRef<echarts.ECharts | null>(null)
@@ -39,7 +39,7 @@ function cssVar(name: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-const initChart = (data: any) => {
+const initChart = (data: NetworkMapData) => {
   if (!chartRef.value) return
   if (!chartInstance.value) {
     chartInstance.value = echarts.init(chartRef.value)
@@ -94,7 +94,7 @@ const initChart = (data: any) => {
           { name: 'LAN', itemStyle: { color: green } },
           { name: 'Device', itemStyle: { color: orange } }
         ],
-        data: data.nodes.map((n: any) => ({
+        data: data.nodes.map((n) => ({
           name: n.name,
           value: n.ip,
           category: n.category,
@@ -112,14 +112,10 @@ const fetchData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const res = await axios.get('http://localhost:8080/api/v1/monitor/network-map')
-    if (res.data.code === 200) {
-      initChart(res.data.data)
-    } else {
-      error.value = res.data.message || '获取数据失败'
-    }
-  } catch (err: any) {
-    error.value = err.message || '网络请求错误'
+    const data = await fetchNetworkMap()
+    initChart(data)
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '网络请求错误'
   } finally {
     loading.value = false
   }
