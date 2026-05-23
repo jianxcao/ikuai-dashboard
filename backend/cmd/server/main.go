@@ -1,71 +1,113 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
-	"ikuai4-backend/backend/internal/config"
-	"ikuai4-backend/backend/internal/controller"
-	"ikuai4-backend/backend/internal/logger"
-	"ikuai4-backend/backend/internal/service"
+	"ikuai-dashboard/backend/internal/config"
+	"ikuai-dashboard/backend/internal/controller"
+	"ikuai-dashboard/backend/internal/logger"
+	"ikuai-dashboard/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
-	// 1. 初始化 Zap 高性能日志
+	configPath := flag.String("config", "", "YAML 配置文件路径")
+	flag.Parse()
+
+	// 1. 初始化 Zap 高性能结构化日志
 	logger.InitLogger()
-	logger.Log.Info("==================================================")
-	logger.Log.Info("  iKuai 流量监控后台服务端启动中...")
-	logger.Log.Info("==================================================")
+	logger.Log.Info("══════════════════════════════════════")
+	logger.Log.Info("  iKuai 流量监控系统 · 后端服务启动中")
+	logger.Log.Info("══════════════════════════════════════")
 
-	// 2. 初始化全局配置
-	config.InitConfig()
-	logger.Log.Infof("配置参数载入成功！监听端口: %s", config.GlobalConfig.Port)
-
-	// 3. 建立爱快物理连接 / 切换仿真数据源
-	service.InitMonitorService()
-
-	if config.GlobalConfig.MockMode {
-		logger.Log.Warn("【警告】服务已切换为 [高保真模拟模式]。您可以在没有连接物理爱快路由器的情况下运行本系统。")
+	// 2. 加载全局配置
+	if err := config.InitConfig(*configPath); err != nil {
+		logger.Log.Fatalf("加载配置失败: %v", err)
+	}
+	activeRouter, ok := config.GlobalConfig.ActiveRouter()
+	if ok {
+		logger.Log.Infof("配置: %s | 端口: %s | 当前爱快: %s | Mock: %v",
+			config.GlobalPath, config.GlobalConfig.Server.Port, activeRouter.Name, activeRouter.Mock)
 	} else {
-		logger.Log.Info("【信息】系统已连接到真实爱快物理路由器！")
+		logger.Log.Infof("配置: %s | 端口: %s | 当前爱快: 未配置",
+			config.GlobalPath, config.GlobalConfig.Server.Port)
 	}
 
-	// 4. 初始化 Gin 引擎
-	gin.SetMode(gin.ReleaseMode) // 发布模式，减少无关控制台输出
-	r := gin.New()
+	// 3. 初始化爱快连接 / Mock 数据源
+	service.InitMonitorService()
 
-	// 使用 Zap 接管 Gin 内部日志
+	// 4. 初始化 Gin 路由引擎
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(controller.CORSMiddleware())
 
-	// 5. 注册路由组
+	// 5. 注册 API 路由
 	api := r.Group("/api/v1")
 	{
-		// 首页看板与网口流量
 		api.GET("/monitor/interface", controller.GetInterfaceDataHandler)
-		// 局域网在线客户端列表 (包含 MAC 聚合去重与备注搜索)
 		api.GET("/monitor/lan", controller.GetLanClientsHandler)
+		api.GET("/monitor/network-map", controller.GetNetworkMapHandler)
+		api.GET("/monitor/security-hub", controller.GetSecurityHubHandler)
+		api.GET("/monitor/multi-wan", controller.GetMultiWanHandler)
+		api.GET("/config/routers", controller.GetRoutersConfigHandler)
+		api.PUT("/config/active-router", controller.SwitchActiveRouterHandler)
+		api.PUT("/config/routers", controller.SaveRoutersConfigHandler)
 	}
 
-	// 默认健康检查路由
+	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
-		modeStr := "real"
-		if config.GlobalConfig.MockMode {
-			modeStr = "mock"
-		}
 		c.JSON(http.StatusOK, gin.H{
-			"status": "healthy",
-			"mode":   modeStr,
+			"status":  "ok",
+			"config":  config.GlobalPath,
+			"service": service.CurrentMonitorService().Status(),
 		})
 	})
 
-	// 6. 启动 HTTP 端口监听
-	addr := fmt.Sprintf(":%s", config.GlobalConfig.Port)
-	logger.Log.Infof("Go Web 服务已成功开启！准备监听接口: http://localhost%s", addr)
+	registerStaticRoutes(r, config.GlobalConfig.Server.StaticDir)
 
+	// 6. 启动监听
+	addr := fmt.Sprintf(":%s", config.GlobalConfig.Server.Port)
+	logger.Log.Infof("服务就绪 → http://localhost%s", addr)
 	if err := r.Run(addr); err != nil {
-		logger.Log.Fatalf("Web 服务运行发生致命故障: %v", err)
+		logger.Log.Fatalf("服务启动失败: %v", err)
 	}
+}
+
+func registerStaticRoutes(r *gin.Engine, staticDir string) {
+	indexPath := filepath.Join(staticDir, "index.html")
+	staticRoot, _ := filepath.Abs(staticDir)
+	r.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "not found"})
+			return
+		}
+		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+			c.Status(http.StatusNotFound)
+			return
+		}
+
+		requestPath := filepath.Clean(strings.TrimPrefix(c.Request.URL.Path, "/"))
+		if requestPath != "." {
+			filePath := filepath.Join(staticDir, requestPath)
+			absFilePath, _ := filepath.Abs(filePath)
+			if rel, err := filepath.Rel(staticRoot, absFilePath); err == nil && !strings.HasPrefix(rel, "..") {
+				if stat, err := os.Stat(filePath); err == nil && !stat.IsDir() {
+					c.File(filePath)
+					return
+				}
+			}
+		}
+		if _, err := os.Stat(indexPath); err == nil {
+			c.File(indexPath)
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "frontend assets not found"})
+	})
 }

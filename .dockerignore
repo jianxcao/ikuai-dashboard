@@ -1,0 +1,15 @@
+.git
+.gitignore
+Dockerfile
+README.md
+config.yaml
+*.log
+tmp
+dist
+frontend/node_modules
+frontend/dist
+frontend/dev-dist
+frontend/.vite
+frontend/*.local
+coverage
+.DS_Store

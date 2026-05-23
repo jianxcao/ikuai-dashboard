@@ -1,0 +1,149 @@
+name: Docker Publish
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional Docker tag to publish, for example v1.2.3'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve image metadata
+        id: meta
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          sanitize_tag() {
+            local value="$1"
+            value="${value//\//-}"
+            value="${value//:/-}"
+            value="${value//@/-}"
+            value="${value// /-}"
+            value="$(printf '%s' "${value}" | tr -cd '[:alnum:]_.-')"
+            value="$(printf '%s' "${value}" | sed 's/^[.-]*//')"
+            if [ -z "${value}" ]; then
+              value="build"
+            fi
+            printf '%s' "${value}"
+          }
+
+          short_sha="${GITHUB_SHA::7}"
+          image="${DOCKERHUB_IMAGE}"
+          if [ -z "${image}" ]; then
+            if [ -z "${DOCKERHUB_USERNAME}" ]; then
+              image="ikuai-dashboard"
+            else
+              image="${DOCKERHUB_USERNAME}/ikuai-dashboard"
+            fi
+          fi
+
+          push="true"
+          latest="false"
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            push="false"
+            version="pr-${PR_NUMBER:-0}-${short_sha}"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ -n "${DISPATCH_TAG}" ]; then
+            version="$(sanitize_tag "${DISPATCH_TAG}")"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="$(sanitize_tag "${GITHUB_REF_NAME}")"
+            latest="true"
+          elif [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+            version="latest"
+            latest="true"
+          else
+            version="$(sanitize_tag "${GITHUB_REF_NAME}")-${short_sha}"
+          fi
+
+          tags_file="$(mktemp)"
+          {
+            printf '%s:%s\n' "${image}" "${version}"
+            printf '%s:sha-%s\n' "${image}" "${short_sha}"
+            if [ "${latest}" = "true" ]; then
+              printf '%s:latest\n' "${image}"
+            fi
+          } | awk '!seen[$0]++' > "${tags_file}"
+
+          {
+            echo "image=${image}"
+            echo "version=${version}"
+            echo "push=${push}"
+            echo "tags<<EOF"
+            cat "${tags_file}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Validate Docker Hub configuration
+        if: steps.meta.outputs.push == 'true'
+        shell: bash
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOCKERHUB_USERNAME}" ]; then
+            echo "Set GitHub variable DOCKERHUB_USERNAME before publishing to Docker Hub." >&2
+            exit 1
+          fi
+          if [ -z "${DOCKERHUB_TOKEN}" ]; then
+            echo "Set GitHub secret DOCKERHUB_TOKEN to a Docker Hub access token before publishing." >&2
+            exit 1
+          fi
+
+      - name: Login to Docker Hub
+        if: steps.meta.outputs.push == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ steps.meta.outputs.push }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=ikuai-dashboard
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+          build-args: |
+            VITE_APP_VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
