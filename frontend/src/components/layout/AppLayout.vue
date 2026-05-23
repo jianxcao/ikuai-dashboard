@@ -30,6 +30,8 @@ import { useRouterConfig } from '@/composables/useRouterConfig'
 const NetworkMap = defineAsyncComponent(() => import('@/views/NetworkMap.vue'))
 const SecurityHub = defineAsyncComponent(() => import('@/views/SecurityHub.vue'))
 const MultiWan = defineAsyncComponent(() => import('@/views/MultiWan.vue'))
+const MonitorInsights = defineAsyncComponent(() => import('@/views/MonitorInsights.vue'))
+const ConfigResources = defineAsyncComponent(() => import('@/views/ConfigResources.vue'))
 const RouterSettings = defineAsyncComponent(() => import('@/views/RouterSettings.vue'))
 
 const currentTab = ref('interface')
@@ -52,6 +54,8 @@ const currentComponent = computed(() => {
     case 'network-map': return NetworkMap
     case 'security-hub': return SecurityHub
     case 'multi-wan': return MultiWan
+    case 'insights': return MonitorInsights
+    case 'resources': return ConfigResources
     case 'settings': return RouterSettings
     default: return MonitorInterface
   }
@@ -76,24 +80,39 @@ const currentComponent = computed(() => {
 @media (min-width: 921px) {
   .main-content {
     margin-left: 280px;
+    width: calc(100% - 280px);
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 920px) {
   .main-content {
-    padding: 84px 16px 96px;
+    padding:
+      calc(72px + max(10px, env(safe-area-inset-top)))
+      max(16px, env(safe-area-inset-right))
+      calc(96px + max(10px, env(safe-area-inset-bottom)))
+      max(16px, env(safe-area-inset-left));
+  }
+}
+
+@media (max-width: 640px) {
+  .main-content {
+    padding-bottom: calc(138px + max(10px, env(safe-area-inset-bottom)));
   }
 }
 
 @media (max-width: 420px) {
   .main-content {
-    padding: 84px 12px 96px;
+    padding:
+      calc(72px + max(10px, env(safe-area-inset-top)))
+      max(12px, env(safe-area-inset-right))
+      calc(138px + max(10px, env(safe-area-inset-bottom)))
+      max(12px, env(safe-area-inset-left));
   }
 }
 
 @media (max-width: 380px) {
   .main-content {
-    padding-bottom: 150px;
+    padding-bottom: calc(190px + max(10px, env(safe-area-inset-bottom)));
   }
 }
 </style>

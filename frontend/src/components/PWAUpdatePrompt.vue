@@ -112,7 +112,6 @@ function dismiss() {
   .pwa-update {
     left: max(12px, env(safe-area-inset-left));
     right: max(12px, env(safe-area-inset-right));
-    bottom: max(12px, env(safe-area-inset-bottom));
     flex-direction: column;
     align-items: stretch;
     border-radius: var(--radius-lg);
@@ -120,6 +119,24 @@ function dismiss() {
 
   .pwa-actions {
     justify-content: flex-end;
+  }
+}
+
+@media (max-width: 920px) {
+  .pwa-update {
+    bottom: calc(82px + max(10px, env(safe-area-inset-bottom)));
+  }
+}
+
+@media (max-width: 640px) {
+  .pwa-update {
+    bottom: calc(136px + max(10px, env(safe-area-inset-bottom)));
+  }
+}
+
+@media (max-width: 380px) {
+  .pwa-update {
+    bottom: calc(190px + max(10px, env(safe-area-inset-bottom)));
   }
 }
 </style>

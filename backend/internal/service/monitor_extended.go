@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+
+	"ikuai-dashboard/backend/internal/logger"
 )
 
 // DTOs
@@ -44,40 +46,136 @@ type RouteRule struct {
 	Enabled   bool   `json:"enabled"`
 }
 
+type MonitorInsightsData struct {
+	Summary          SummaryInfo     `json:"summary"`
+	TopClients       []ClientDTO     `json:"top_clients"`
+	TopInterfaces    []TrafficDetail `json:"top_interfaces"`
+	AbnormalClients  []ClientDTO     `json:"abnormal_clients"`
+	HighRiskMappings []PortMapping   `json:"high_risk_mappings"`
+}
+
 func (s *MonitorService) GetNetworkMap(ctx context.Context) (*NetworkMapData, error) {
 	if s == nil {
 		return (&MonitorService{}).getMockNetworkMap(), nil
 	}
+	if s.unconfigured {
+		return nil, ErrUnconfigured
+	}
 	if s.mockMode {
 		return s.getMockNetworkMap(), nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.getMockNetworkMap(), nil
+	iface, err := s.GetInterfaceData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	clients, err := s.GetLanClients(ctx, "")
+	if err != nil {
+		logger.Log.Warnf("构建网络拓扑时获取客户端失败: %v", err)
+		clients = nil
+	}
+	return buildNetworkMapFromData(s.router.Name, iface, clients), nil
 }
 
 func (s *MonitorService) GetSecurityHub(ctx context.Context) (*SecurityHubData, error) {
 	if s == nil {
 		return (&MonitorService{}).getMockSecurityHub(), nil
 	}
+	if s.unconfigured {
+		return nil, ErrUnconfigured
+	}
 	if s.mockMode {
 		return s.getMockSecurityHub(), nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.getMockSecurityHub(), nil
+	def, _ := commonResourceCatalog().Lookup("dnat-rules")
+	rows, err := s.getCommonResourceRows(ctx, def)
+	if err != nil {
+		logger.Log.Warnf("获取 DNAT 暴露面失败: %v", err)
+	}
+	clients, err := s.GetLanClients(ctx, "")
+	if err != nil {
+		logger.Log.Warnf("获取异常终端失败: %v", err)
+	}
+	return &SecurityHubData{
+		HighRiskPorts:   portMappingsFromRows(rows),
+		AbnormalDevices: abnormalClientsFromClients(clients),
+	}, nil
 }
 
 func (s *MonitorService) GetMultiWan(ctx context.Context) (*MultiWanData, error) {
 	if s == nil {
 		return (&MonitorService{}).getMockMultiWan(), nil
 	}
+	if s.unconfigured {
+		return nil, ErrUnconfigured
+	}
 	if s.mockMode {
 		return s.getMockMultiWan(), nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.getMockMultiWan(), nil
+	iface, err := s.GetInterfaceData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	routes := make([]RouteRule, 0)
+	for _, item := range []struct {
+		resource string
+		label    string
+	}{
+		{resource: "static-routes", label: "Static"},
+		{resource: "policy-routes", label: "Policy"},
+		{resource: "domain-rules", label: "Domain"},
+	} {
+		def, _ := commonResourceCatalog().Lookup(item.resource)
+		rows, err := s.getCommonResourceRows(ctx, def)
+		if err != nil {
+			logger.Log.Warnf("获取 %s 失败: %v", item.resource, err)
+			continue
+		}
+		routes = append(routes, routeRulesFromRows(item.label, rows)...)
+	}
+	return &MultiWanData{WanStatus: iface.WanStatus, Routes: routes}, nil
+}
+
+func (s *MonitorService) GetMonitorInsights(ctx context.Context) (*MonitorInsightsData, error) {
+	if s == nil {
+		return nil, nil
+	}
+	if s.unconfigured {
+		return nil, ErrUnconfigured
+	}
+	if s.mockMode {
+		iface := s.getMockInterfaceData()
+		clients := s.getMockLanClients("")
+		security := s.getMockSecurityHub()
+		return &MonitorInsightsData{
+			Summary:          iface.Summary,
+			TopClients:       topClientsByTraffic(clients, 8),
+			TopInterfaces:    topInterfacesByTraffic(iface.TrafficDetails, 8),
+			AbnormalClients:  abnormalClientsFromClients(clients),
+			HighRiskMappings: security.HighRiskPorts,
+		}, nil
+	}
+
+	iface, err := s.GetInterfaceData(ctx)
+	if err != nil {
+		return nil, err
+	}
+	clients, err := s.GetLanClients(ctx, "")
+	if err != nil {
+		logger.Log.Warnf("获取监控分析终端失败: %v", err)
+		clients = nil
+	}
+	security, err := s.GetSecurityHub(ctx)
+	if err != nil {
+		logger.Log.Warnf("获取监控分析安全摘要失败: %v", err)
+		security = &SecurityHubData{}
+	}
+	return &MonitorInsightsData{
+		Summary:          iface.Summary,
+		TopClients:       topClientsByTraffic(clients, 8),
+		TopInterfaces:    topInterfacesByTraffic(iface.TrafficDetails, 8),
+		AbnormalClients:  abnormalClientsFromClients(clients),
+		HighRiskMappings: security.HighRiskPorts,
+	}, nil
 }
 
 // Mock generators

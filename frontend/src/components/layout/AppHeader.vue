@@ -104,7 +104,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Moon, Network, Server, Settings, ShieldCheck, SunMedium, Waypoints, Wifi } from 'lucide-vue-next'
+import { Activity, BarChart3, Moon, Network, Server, Settings, ShieldCheck, SlidersHorizontal, SunMedium, Waypoints, Wifi } from 'lucide-vue-next'
 import { useRouterConfig } from '@/composables/useRouterConfig'
 import type { AppTheme } from '@/composables/useTheme'
 
@@ -146,6 +146,8 @@ const tabs = [
   { id: 'network-map', label: '网络拓扑', mobileLabel: '拓扑', icon: Network },
   { id: 'security-hub', label: '安全中心', mobileLabel: '安全', icon: ShieldCheck },
   { id: 'multi-wan', label: '多 WAN', mobileLabel: 'WAN', icon: Waypoints },
+  { id: 'insights', label: '监控分析', mobileLabel: '分析', icon: BarChart3 },
+  { id: 'resources', label: '配置管理', mobileLabel: '配置', icon: SlidersHorizontal },
   { id: 'settings', label: '路由器设置', mobileLabel: '设置', icon: Settings },
 ]
 </script>
@@ -408,7 +410,7 @@ const tabs = [
     left: max(10px, env(safe-area-inset-left));
     z-index: 60;
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 4px;
     padding: 8px;
     border-radius: 24px;
@@ -442,6 +444,12 @@ const tabs = [
     color: var(--text-primary);
     background: var(--control-active);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  }
+}
+
+@media (max-width: 640px) {
+  .bottom-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

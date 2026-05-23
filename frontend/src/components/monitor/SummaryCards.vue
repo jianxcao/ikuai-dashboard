@@ -68,9 +68,9 @@ defineProps({
   gap: 24px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1240px) {
   .summary-cards {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -151,9 +151,11 @@ defineProps({
 
 .metric-number {
   min-width: 0;
+  flex: 0 1 auto;
 }
 
 .metric-unit {
+  flex: 0 0 auto;
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 700;

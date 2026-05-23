@@ -89,6 +89,37 @@ export interface MultiWanData {
   routes: RouteRule[]
 }
 
+export interface MonitorInsightsData {
+  summary: IKuaiSummary
+  top_clients: ClientDTO[]
+  top_interfaces: IKuaiTraffic[]
+  abnormal_clients: ClientDTO[]
+  high_risk_mappings: PortMapping[]
+}
+
+export interface CommonResourceDefinition {
+  name: string
+  label: string
+  group: string
+  v3_name: string
+  v4_path: string
+  writable: boolean
+  available: boolean
+  methods: string[]
+}
+
+export interface CommonResourceData {
+  resource: CommonResourceDefinition
+  rows: Record<string, unknown>[]
+  error?: string
+}
+
+export interface CommonResourceMutation {
+  resource: string
+  action: string
+  result: Record<string, unknown>
+}
+
 export interface AppServerConfig {
   port: string
   static_dir: string
@@ -169,6 +200,46 @@ export async function fetchSecurityHub(): Promise<SecurityHubData> {
 
 export async function fetchMultiWan(): Promise<MultiWanData> {
   const res = await http.get('/monitor/multi-wan')
+  return res.data
+}
+
+export async function fetchMonitorInsights(): Promise<MonitorInsightsData> {
+  const res = await http.get('/monitor/insights')
+  return res.data
+}
+
+export async function fetchCommonResources(): Promise<CommonResourceDefinition[]> {
+  const res = await http.get('/router/resources')
+  return res.data
+}
+
+export async function fetchCommonResource(name: string): Promise<CommonResourceData> {
+  const res = await http.get(`/router/resources/${name}`)
+  return res.data
+}
+
+export async function createCommonResource(
+  name: string,
+  payload: Record<string, unknown>
+): Promise<CommonResourceMutation> {
+  const res = await http.post(`/router/resources/${name}`, payload)
+  return res.data
+}
+
+export async function updateCommonResource(
+  name: string,
+  id: string | number,
+  payload: Record<string, unknown>
+): Promise<CommonResourceMutation> {
+  const res = await http.put(`/router/resources/${name}/${id}`, payload)
+  return res.data
+}
+
+export async function deleteCommonResource(
+  name: string,
+  id: string | number
+): Promise<CommonResourceMutation> {
+  const res = await http.delete(`/router/resources/${name}/${id}`)
   return res.data
 }
 
