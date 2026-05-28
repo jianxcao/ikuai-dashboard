@@ -190,6 +190,10 @@ export function setLocalToken(token: string): void {
 http.interceptors.response.use(
   (res) => res.data,
   (err) => {
+    // 401 时派发全局未授权事件，供登录状态管理者响应
+    if (err.response?.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+    }
     console.error('[API Error]', err.message)
     return Promise.reject(err)
   }
@@ -285,7 +289,42 @@ export async function saveRouterConfig(config: PublicAppConfig): Promise<RouterC
   return { config: res.data, status: res.status }
 }
 
-// ─── Dashboard 访问 Token API ──────────────────────────────────────────────
+// ─── 用户登录认证 API ─────────────────────────────────────────────────
+
+export interface AuthStatus {
+  auth_enabled: boolean
+}
+
+export interface LoginResult {
+  token: string
+  expires_in: number
+}
+
+/**
+ * 查询后端是否启用登录认证（公开接口，不需要 Token）。
+ */
+export async function fetchAuthStatus(): Promise<AuthStatus> {
+  const res = await http.get<unknown, { code: number; data: AuthStatus }>('/auth/status')
+  return res.data
+}
+
+/**
+ * 使用用户名密码登录。
+ */
+export async function login(username: string, password: string): Promise<LoginResult> {
+  const res = await http.post<unknown, { code: number; data: LoginResult }>('/auth/login', {
+    username,
+    password,
+  })
+  return res.data
+}
+
+/**
+ * 登出（尞层清除 localStorage，后端仅做日志）。
+ */
+export async function logout(): Promise<void> {
+  await http.post('/auth/logout').catch(() => {}) // 登出不需要处理错误
+}
 
 export interface TokenStatus {
   token_enabled: boolean

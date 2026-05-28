@@ -62,7 +62,19 @@
             <span>{{ item.shortLabel }}</span>
           </button>
         </div>
+
+        <button
+          v-if="authEnabled"
+          type="button"
+          class="logout-btn"
+          title="登出"
+          @click="handleLogout"
+        >
+          <LogOut :size="14" />
+          <span>登出</span>
+        </button>
       </div>
+
     </nav>
 
     <div v-if="!configurationOnly" class="mobile-router-bar glass-panel" aria-label="移动端服务器切换">
@@ -104,8 +116,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, BarChart3, Moon, Network, Server, Settings, ShieldCheck, SlidersHorizontal, SunMedium, Waypoints, Wifi } from 'lucide-vue-next'
+import { Activity, BarChart3, LogOut, Moon, Network, Server, Settings, ShieldCheck, SlidersHorizontal, SunMedium, Waypoints, Wifi } from 'lucide-vue-next'
 import { useRouterConfig } from '@/composables/useRouterConfig'
+import { useAuth } from '@/composables/useAuth'
 import type { AppTheme } from '@/composables/useTheme'
 
 withDefaults(defineProps<{
@@ -126,7 +139,12 @@ const emit = defineEmits<{
 }>()
 
 const { config, activeRouter, switching, status, activate } = useRouterConfig()
+const { authEnabled, logout } = useAuth()
 const buildVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+
+async function handleLogout() {
+  await logout()
+}
 
 const statusLabel = computed(() => {
   if (status.value?.mode === 'unconfigured') return '未配置'
@@ -356,6 +374,30 @@ const tabs = [
   padding: 0 10px;
   font-size: 12px;
   font-weight: 700;
+}
+
+.logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+  white-space: nowrap;
+}
+
+.logout-btn:hover {
+  color: var(--system-red);
+  border-color: color-mix(in srgb, var(--system-red) 42%, var(--control-border));
+  background: var(--system-red-dim);
 }
 
 .bottom-nav {

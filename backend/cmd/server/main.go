@@ -51,6 +51,10 @@ func main() {
 	// 5. 注册 API 路由
 	// 公开端点：不受 Token 保护（供前端查询是否需要认证）
 	r.GET("/api/v1/config/token", controller.GetTokenStatusHandler)
+	// 登录相关公开端点
+	r.GET("/api/v1/auth/status", controller.GetAuthStatusHandler)
+	r.POST("/api/v1/auth/login", controller.LoginHandler)
+	r.POST("/api/v1/auth/logout", controller.LogoutHandler)
 
 	// 受 Token 保护的路由组
 	api := r.Group("/api/v1", controller.TokenAuthMiddleware())
