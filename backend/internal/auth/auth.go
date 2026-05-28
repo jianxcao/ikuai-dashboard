@@ -15,7 +15,6 @@ package auth
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -53,11 +52,10 @@ func initAuth() {
 	}
 	sessionTTL = time.Duration(day*24) * time.Hour
 
-	// 每次启动随机生成 HMAC secret（重启后已有 session 失效）
-	hmacSecret = make([]byte, 32)
-	if _, err := rand.Read(hmacSecret); err != nil {
-		panic("auth: 生成 HMAC secret 失败: " + err.Error())
-	}
+	// 根据用户名和密码生成固定的 HMAC secret
+	// 这样只要凭据不改，重启服务后之前的 Session 依然有效
+	hash := sha256.Sum256([]byte(loginUser + ":" + loginPassRaw))
+	hmacSecret = hash[:]
 }
 
 func getEnvOrDefault(key, fallback string) string {
