@@ -22,8 +22,16 @@ const (
 
 // ServerConfig 保存后端运行参数。
 type ServerConfig struct {
-	Port      string `yaml:"port" json:"port"`
-	StaticDir string `yaml:"static_dir" json:"static_dir"`
+	Port        string `yaml:"port" json:"port"`
+	StaticDir   string `yaml:"static_dir" json:"static_dir"`
+	AccessToken string `yaml:"access_token" json:"access_token,omitempty"`
+}
+
+// PublicServerConfig 是返回给前端的脱敏服务端配置（不含 AccessToken 内容）。
+type PublicServerConfig struct {
+	Port         string `json:"port"`
+	StaticDir    string `json:"static_dir"`
+	TokenEnabled bool   `json:"token_enabled"`
 }
 
 // RouterConfig 描述一台爱快服务器。
@@ -48,9 +56,9 @@ type AppConfig struct {
 
 // PublicAppConfig 是返回给前端的脱敏配置。
 type PublicAppConfig struct {
-	Server         ServerConfig   `json:"server"`
-	ActiveRouterID string         `json:"active_router_id"`
-	Routers        []RouterConfig `json:"routers"`
+	Server         PublicServerConfig `json:"server"`
+	ActiveRouterID string             `json:"active_router_id"`
+	Routers        []RouterConfig     `json:"routers"`
 }
 
 var (
@@ -280,7 +288,11 @@ func (c *AppConfig) Public() PublicAppConfig {
 		routers[i].Token = ""
 	}
 	return PublicAppConfig{
-		Server:         c.Server,
+		Server: PublicServerConfig{
+			Port:         c.Server.Port,
+			StaticDir:    c.Server.StaticDir,
+			TokenEnabled: strings.TrimSpace(c.Server.AccessToken) != "",
+		},
 		ActiveRouterID: c.ActiveRouterID,
 		Routers:        routers,
 	}

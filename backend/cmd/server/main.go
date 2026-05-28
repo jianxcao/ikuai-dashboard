@@ -49,7 +49,11 @@ func main() {
 	r.Use(controller.CORSMiddleware())
 
 	// 5. 注册 API 路由
-	api := r.Group("/api/v1")
+	// 公开端点：不受 Token 保护（供前端查询是否需要认证）
+	r.GET("/api/v1/config/token", controller.GetTokenStatusHandler)
+
+	// 受 Token 保护的路由组
+	api := r.Group("/api/v1", controller.TokenAuthMiddleware())
 	{
 		api.GET("/monitor/interface", controller.GetInterfaceDataHandler)
 		api.GET("/monitor/lan", controller.GetLanClientsHandler)
@@ -57,6 +61,7 @@ func main() {
 		api.GET("/monitor/security-hub", controller.GetSecurityHubHandler)
 		api.GET("/monitor/multi-wan", controller.GetMultiWanHandler)
 		api.GET("/monitor/insights", controller.GetMonitorInsightsHandler)
+		api.GET("/ip", controller.GetWanIPHandler)
 		api.GET("/router/resources", controller.ListCommonResourcesHandler)
 		api.GET("/router/resources/:name", controller.GetCommonResourceHandler)
 		api.POST("/router/resources/:name", controller.CreateCommonResourceHandler)
@@ -65,6 +70,7 @@ func main() {
 		api.GET("/config/routers", controller.GetRoutersConfigHandler)
 		api.PUT("/config/active-router", controller.SwitchActiveRouterHandler)
 		api.PUT("/config/routers", controller.SaveRoutersConfigHandler)
+		api.PUT("/config/token", controller.SaveTokenHandler)
 	}
 
 	// 健康检查

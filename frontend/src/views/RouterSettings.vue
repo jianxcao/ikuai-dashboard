@@ -117,13 +117,90 @@
           <span>{{ saving ? '保存中...' : '保存配置' }}</span>
         </button>
       </div>
+
+      <!-- Dashboard 访问保护面板 -->
+      <section class="token-section glass-card" aria-label="Dashboard 访问保护">
+        <div class="token-section-head">
+          <div class="token-title-area">
+            <ShieldCheck :size="18" />
+            <h2>Dashboard 访问保护</h2>
+          </div>
+          <span :class="['token-status-badge', tokenEnabled ? 'enabled' : 'disabled']">
+            {{ tokenEnabled ? '已启用' : '未启用' }}
+          </span>
+        </div>
+
+        <p class="token-desc">配置后，所有 API 请求必须携带此 Token。前端会自动保存到浏览器，无需每次手动输入。</p>
+
+        <div v-if="tokenError" class="error-banner">{{ tokenError }}</div>
+        <div v-if="tokenSuccessMsg" class="success-banner">{{ tokenSuccessMsg }}</div>
+
+        <div v-if="tokenEnabled && currentToken" class="token-display-row">
+          <label class="token-label">
+            <span>当前 Token</span>
+            <div class="token-input-group">
+              <input
+                id="dashboard-access-token"
+                :type="showToken ? 'text' : 'password'"
+                :value="currentToken"
+                readonly
+                class="token-input"
+                aria-label="Dashboard 访问 Token"
+              />
+              <button
+                type="button"
+                class="icon-action token-btn"
+                :title="showToken ? '隐藏 Token' : '显示 Token'"
+                @click="showToken = !showToken"
+              >
+                <Eye v-if="!showToken" :size="15" />
+                <EyeOff v-else :size="15" />
+              </button>
+              <button
+                type="button"
+                class="icon-action token-btn"
+                title="复制 Token"
+                @click="handleCopy"
+              >
+                <Check v-if="copied" :size="15" class="icon-green" />
+                <Copy v-else :size="15" />
+              </button>
+            </div>
+          </label>
+        </div>
+
+        <div class="token-actions">
+          <button
+            type="button"
+            class="save-button"
+            :disabled="tokenSaving"
+            @click="generateToken"
+          >
+            <RefreshCw :size="15" />
+            <span>{{ tokenEnabled ? '重新生成 Token' : '生成 Token' }}</span>
+          </button>
+          <button
+            v-if="tokenEnabled"
+            type="button"
+            class="icon-action danger"
+            style="width: auto; padding: 0 14px; gap: 6px;"
+            :disabled="tokenSaving"
+            @click="clearToken"
+          >
+            <Trash2 :size="15" />
+            <span>清除保护</span>
+          </button>
+        </div>
+      </section>
     </template>
   </section>
 </template>
 
 <script setup lang="ts">
-import { Plus, Save, Trash2 } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { Check, Copy, Eye, EyeOff, Plus, RefreshCw, Save, ShieldCheck, Trash2 } from 'lucide-vue-next'
 import { useRouterConfig } from '@/composables/useRouterConfig'
+import { useTokenConfig } from '@/composables/useTokenConfig'
 import type { RouterConfig } from '@/api/monitor'
 
 const {
@@ -138,6 +215,30 @@ const {
   addRouter,
   removeRouter,
 } = useRouterConfig()
+
+const {
+  tokenEnabled,
+  currentToken,
+  saving: tokenSaving,
+  error: tokenError,
+  successMsg: tokenSuccessMsg,
+  generateToken,
+  clearToken,
+  copyToken,
+} = useTokenConfig()
+
+const showToken = ref(false)
+const copied = ref(false)
+
+async function handleCopy() {
+  const ok = await copyToken()
+  if (ok) {
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 2000)
+  }
+}
 
 let nextRouterKey = 0
 const routerKeys = new WeakMap<RouterConfig, string>()
@@ -440,5 +541,123 @@ button:disabled {
   .save-button {
     width: 100%;
   }
+}
+
+/* ─── Token 面板样式 ───────────────────────────────────── */
+
+.token-section {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.token-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.token-title-area {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-secondary);
+}
+
+.token-title-area h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 760;
+}
+
+.token-status-badge {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.token-status-badge.enabled {
+  color: var(--system-green);
+  border: 1px solid var(--system-green);
+  background: var(--system-green-dim);
+}
+
+.token-status-badge.disabled {
+  color: var(--text-tertiary);
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+}
+
+.token-desc {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.token-label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.token-label > span {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.token-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-input {
+  flex: 1;
+  min-height: 40px;
+  padding: 0 12px;
+  color: var(--text-primary);
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  background: var(--control-bg);
+  font-family: 'JetBrains Mono', 'Menlo', 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  cursor: default;
+}
+
+.token-btn {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.icon-green {
+  color: var(--system-green);
+}
+
+.token-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.success-banner {
+  padding: 10px 14px;
+  border: 1px solid var(--system-green);
+  border-radius: 10px;
+  background: var(--system-green-dim);
+  color: var(--system-green);
+  font-size: 13px;
+  font-weight: 650;
 }
 </style>

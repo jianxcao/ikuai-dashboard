@@ -123,6 +123,7 @@ export interface CommonResourceMutation {
 export interface AppServerConfig {
   port: string
   static_dir: string
+  token_enabled: boolean
 }
 
 export interface RouterConfig {
@@ -169,6 +170,22 @@ const http = axios.create({
   timeout: 10000,
 })
 
+// ─── Dashboard 访问 Token 工具函数 ───────────────────────────────────────
+
+const DASHBOARD_TOKEN_KEY = 'dashboard_access_token'
+
+export function getLocalToken(): string {
+  return localStorage.getItem(DASHBOARD_TOKEN_KEY) || ''
+}
+
+export function setLocalToken(token: string): void {
+  if (token) {
+    localStorage.setItem(DASHBOARD_TOKEN_KEY, token)
+  } else {
+    localStorage.removeItem(DASHBOARD_TOKEN_KEY)
+  }
+}
+
 // 统一响应拦截：直接返回 data 字段
 http.interceptors.response.use(
   (res) => res.data,
@@ -177,6 +194,16 @@ http.interceptors.response.use(
     return Promise.reject(err)
   }
 )
+
+// 请求拦截器：自动携带 Dashboard 访问 Token
+http.interceptors.request.use((config) => {
+  const token = getLocalToken()
+  if (token) {
+    config.headers = config.headers ?? {}
+    config.headers['Authorization'] = `Bearer ${token}`
+  }
+  return config
+})
 
 export async function fetchInterfaceData(): Promise<IKuaiInterfaceData> {
   const res = await http.get('/monitor/interface')
@@ -256,4 +283,40 @@ export async function switchActiveRouter(id: string): Promise<RouterConfigPayloa
 export async function saveRouterConfig(config: PublicAppConfig): Promise<RouterConfigPayload> {
   const res = await http.put<unknown, RouterConfigEnvelope>('/config/routers', config)
   return { config: res.data, status: res.status }
+}
+
+// ─── Dashboard 访问 Token API ──────────────────────────────────────────────
+
+export interface TokenStatus {
+  token_enabled: boolean
+}
+
+export interface SaveTokenResult {
+  token: string
+  token_enabled: boolean
+}
+
+/**
+ * 查询 Dashboard 访问 Token 状态（不受 Token 保护，公开接口）。
+ */
+export async function fetchTokenStatus(): Promise<TokenStatus> {
+  // 直接使用原始 axios ，避免 http 实例的拦截器层干扰
+  const res = await http.get<unknown, { code: number; data: TokenStatus }>('/config/token')
+  return res.data
+}
+
+/**
+ * 保存 Dashboard 访问 Token。
+ * @param token - 指定 Token。传入空字符串清除 Token。
+ * @param generate - 传 true 则让后端自动生成随机 Token。
+ */
+export async function saveToken(
+  token: string,
+  generate = false
+): Promise<SaveTokenResult> {
+  const res = await http.put<unknown, { code: number; data: SaveTokenResult }>('/config/token', {
+    token,
+    generate,
+  })
+  return res.data
 }

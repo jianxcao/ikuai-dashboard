@@ -41,7 +41,7 @@ const switching = ref<string | null>(null)
 const error = ref<string | null>(null)
 const saved = ref(false)
 const config = ref<PublicAppConfig>({
-  server: { port: '8080', static_dir: 'frontend/dist' },
+  server: { port: '8080', static_dir: 'frontend/dist', token_enabled: false },
   active_router_id: '',
   routers: [],
 })
