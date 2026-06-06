@@ -94,7 +94,7 @@
 }
 
 html {
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Helvetica Neue", sans-serif;
   font-size: 15px;
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
@@ -118,6 +118,7 @@ body {
 
 #app {
   min-height: 100vh;
+  width: 100%;
   overflow-x: clip;
 }
 

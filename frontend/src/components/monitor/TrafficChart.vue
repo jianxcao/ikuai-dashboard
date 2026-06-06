@@ -18,10 +18,10 @@
         </div>
       </div>
     </div>
-    
+
     <div class="chart-container">
       <div ref="chartRef" class="echarts-instance"></div>
-      
+
       <!-- Loading Overlay -->
       <div v-if="loading && chartLabels.length === 0" class="chart-loading">
         <div class="spinner"></div>
@@ -36,17 +36,20 @@ import { ref, onMounted, onUnmounted, watch, markRaw } from 'vue'
 import * as echarts from 'echarts'
 import { formatSpeed } from '@/composables/useFormatters'
 
-const props = withDefaults(defineProps<{
-  chartLabels?: string[]
-  chartUpload?: number[]
-  chartDownload?: number[]
-  loading?: boolean
-}>(), {
-  chartLabels: () => [],
-  chartUpload: () => [],
-  chartDownload: () => [],
-  loading: false
-})
+const props = withDefaults(
+  defineProps<{
+    chartLabels?: string[]
+    chartUpload?: number[]
+    chartDownload?: number[]
+    loading?: boolean
+  }>(),
+  {
+    chartLabels: () => [],
+    chartUpload: () => [],
+    chartDownload: () => [],
+    loading: false
+  }
+)
 
 const chartRef = ref<HTMLElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
@@ -68,7 +71,7 @@ function chartTokens() {
     green: cssVar('--system-green') || '#62f4ad',
     greenDim: cssVar('--system-green-dim') || 'rgba(98, 244, 173, 0.18)',
     blue: cssVar('--system-blue') || '#5ecbff',
-    blueDim: cssVar('--system-blue-dim') || 'rgba(94, 203, 255, 0.18)',
+    blueDim: cssVar('--system-blue-dim') || 'rgba(94, 203, 255, 0.18)'
   }
 }
 
@@ -88,7 +91,8 @@ function buildOption() {
       backgroundColor: tokens.glassStrong,
       borderColor: tokens.glassBorder,
       textStyle: { color: tokens.textPrimary },
-      extraCssText: 'backdrop-filter: blur(18px); border-radius: 14px; box-shadow: 0 18px 48px rgba(0,0,0,0.24);',
+      extraCssText:
+        'backdrop-filter: blur(18px); border-radius: 14px; box-shadow: 0 18px 48px rgba(0,0,0,0.24);',
       axisPointer: {
         type: 'line',
         lineStyle: { color: tokens.controlBorder, type: 'dashed' }
@@ -177,7 +181,7 @@ function refreshChartOptions() {
 // 初始化 ECharts
 function initChart() {
   if (!chartRef.value) return
-  
+
   chartInstance = markRaw(echarts.init(chartRef.value))
   chartInstance.setOption(buildOption())
 }
@@ -189,10 +193,7 @@ watch(
     if (!chartInstance) return
     chartInstance.setOption({
       xAxis: { data: newLabels },
-      series: [
-        { data: props.chartUpload },
-        { data: props.chartDownload }
-      ]
+      series: [{ data: props.chartUpload }, { data: props.chartDownload }]
     })
   },
   { deep: true }
@@ -200,7 +201,7 @@ watch(
 
 onMounted(() => {
   initChart()
-  
+
   // 响应式 Resize
   resizeObserver = new ResizeObserver(() => {
     if (chartInstance) chartInstance.resize()
@@ -208,7 +209,10 @@ onMounted(() => {
   if (chartRef.value) resizeObserver.observe(chartRef.value)
 
   themeObserver = new MutationObserver(refreshChartOptions)
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme']
+  })
 })
 
 onUnmounted(() => {
@@ -220,7 +224,6 @@ onUnmounted(() => {
 
 <style scoped>
 .chart-section {
-  margin-top: 24px;
   padding: 0;
   overflow: hidden;
   display: flex;
@@ -277,7 +280,7 @@ onUnmounted(() => {
 }
 
 .chart-container {
-  height: 320px;
+  height: clamp(260px, 38vw, 360px);
   position: relative;
   width: 100%;
 }
@@ -314,7 +317,7 @@ onUnmounted(() => {
   }
 
   .chart-container {
-    height: 260px;
+    height: 248px;
   }
 }
 </style>

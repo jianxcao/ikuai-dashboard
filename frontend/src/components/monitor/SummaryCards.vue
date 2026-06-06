@@ -56,16 +56,16 @@ import { formatCountCompact, formatSpeedParts } from '@/composables/useFormatter
 defineProps({
   summary: {
     type: Object,
-    default: () => ({ upload_speed: 0, download_speed: 0, total_connections: 0, online_users: 0 }),
-  },
+    default: () => ({ upload_speed: 0, download_speed: 0, total_connections: 0, online_users: 0 })
+  }
 })
 </script>
 
 <style scoped>
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
 }
 
 @media (max-width: 1240px) {
@@ -75,9 +75,12 @@ defineProps({
 }
 
 .summary-card {
-  padding: 22px 26px;
+  min-height: 156px;
+  padding: 22px 22px 20px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 18px;
   position: relative;
   overflow: hidden;
@@ -109,9 +112,9 @@ defineProps({
 }
 
 .icon-wrapper {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -122,18 +125,19 @@ defineProps({
 }
 
 .card-content {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .card-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .card-value {
@@ -141,8 +145,8 @@ defineProps({
   align-items: baseline;
   gap: 8px;
   min-width: 0;
-  font-size: 31px;
-  font-weight: 300;
+  font-size: clamp(1.9rem, 2vw, 2.45rem);
+  font-weight: 640;
   letter-spacing: 0;
   color: var(--text-primary);
   white-space: nowrap;
@@ -164,20 +168,29 @@ defineProps({
 
 @media (max-width: 560px) {
   .summary-cards {
-    grid-template-columns: 1fr;
-    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .summary-card {
-    padding: 20px;
+    min-height: 136px;
+    padding: 18px 16px;
   }
 
   .card-value {
-    font-size: 27px;
+    white-space: normal;
+    align-items: flex-end;
+    gap: 4px;
   }
 
   .metric-unit {
     font-size: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .summary-cards {
+    grid-template-columns: 1fr;
   }
 }
 </style>

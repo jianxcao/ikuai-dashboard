@@ -4,7 +4,12 @@
       <div class="device-info">
         <div class="device-name">{{ client.comment || client.hostname || '未知设备' }}</div>
         <div class="device-meta">
-          <button type="button" class="mac-chip" @click="copyToClipboard(client.mac)" title="点击复制 MAC">
+          <button
+            type="button"
+            class="mac-chip"
+            @click="copyToClipboard(client.mac)"
+            title="点击复制 MAC"
+          >
             <Cpu :size="13" class="mac-icon" />
             <span class="font-mono">{{ client.mac }}</span>
           </button>
@@ -43,8 +48,12 @@
     <div class="card-totals">
       <div class="font-mono total-sum">{{ formatBytes(totalBytes) }}</div>
       <div class="total-breakdown">
-        <span class="font-mono"><span class="total-label">↑</span>{{ formatBytes(client.total_up) }}</span>
-        <span class="font-mono"><span class="total-label">↓</span>{{ formatBytes(client.total_down) }}</span>
+        <span class="font-mono"
+          ><span class="total-label">↑</span>{{ formatBytes(client.total_up) }}</span
+        >
+        <span class="font-mono"
+          ><span class="total-label">↓</span>{{ formatBytes(client.total_down) }}</span
+        >
       </div>
     </div>
   </div>
@@ -59,7 +68,7 @@ import {
   formatDurationCompact,
   formatSpeed,
   getIPv4,
-  getIPv6,
+  getIPv6
 } from '@/composables/useFormatters'
 import type { ClientDTO } from '@/api/monitor'
 
@@ -192,8 +201,14 @@ function copyToClipboard(text: string) {
   word-break: break-word;
 }
 
-.ip-row.v4 .ip-label { background: var(--system-blue-dim); color: var(--system-blue); }
-.ip-row.v6 .ip-label { background: var(--system-purple-dim); color: var(--system-purple); }
+.ip-row.v4 .ip-label {
+  background: var(--system-blue-dim);
+  color: var(--system-blue);
+}
+.ip-row.v6 .ip-label {
+  background: var(--system-purple-dim);
+  color: var(--system-purple);
+}
 .ip-row.v6 .ip-address {
   color: var(--text-secondary);
   font-size: 12px;
@@ -218,9 +233,15 @@ function copyToClipboard(text: string) {
   white-space: nowrap;
 }
 
-.metric-cell .speed.up { color: var(--system-green); }
-.metric-cell .speed.down { color: var(--system-blue); }
-.metric-cell .conns { color: var(--text-primary); }
+.metric-cell .speed.up {
+  color: var(--system-green);
+}
+.metric-cell .speed.down {
+  color: var(--system-blue);
+}
+.metric-cell .conns {
+  color: var(--text-primary);
+}
 
 .card-totals {
   display: flex;
@@ -256,6 +277,7 @@ function copyToClipboard(text: string) {
     gap: 14px;
     padding: 18px;
     border: 1px solid var(--control-border);
+    border-bottom: 1px solid var(--control-border);
     border-radius: var(--radius-md);
     background: var(--control-bg);
   }

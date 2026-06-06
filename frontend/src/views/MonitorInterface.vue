@@ -13,13 +13,16 @@
 
     <template v-else>
       <SummaryCards :summary="summary" />
-      <TrafficTables :wanStatus="wanStatus" :trafficDetails="trafficDetails" />
-      <TrafficChart 
-        :chartLabels="chartLabels" 
-        :chartUpload="chartUpload" 
-        :chartDownload="chartDownload"
-        :loading="loading"
-      />
+
+      <div class="content-stack">
+        <TrafficChart
+          :chartLabels="chartLabels"
+          :chartUpload="chartUpload"
+          :chartDownload="chartDownload"
+          :loading="loading"
+        />
+        <TrafficTables :wanStatus="wanStatus" :trafficDetails="trafficDetails" />
+      </div>
     </template>
   </div>
 </template>
@@ -46,13 +49,25 @@ const {
 .page-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
   animation: fade-in 0.4s ease-out;
 }
 
+.content-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .loading-state {

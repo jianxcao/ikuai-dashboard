@@ -15,7 +15,11 @@
           <span>下载</span>
           <component :is="getSortIcon('download')" :size="13" class="sort-icon" />
         </button>
-        <button type="button" class="header-col sortable numeric" @click="handleSort('connections')">
+        <button
+          type="button"
+          class="header-col sortable numeric"
+          @click="handleSort('connections')"
+        >
           <span>连接数</span>
           <component :is="getSortIcon('connections')" :size="13" class="sort-icon" />
         </button>
@@ -26,11 +30,7 @@
       </div>
 
       <div class="list-body">
-        <ClientCard
-          v-for="client in clients"
-          :key="client.mac"
-          :client="client"
-        />
+        <ClientCard v-for="client in clients" :key="client.mac" :client="client" />
 
         <div v-if="!loading && clients.length === 0" class="empty-state">
           <div class="empty-icon">!</div>
@@ -51,15 +51,18 @@ import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChevronsUpDown } from 'lucide-v
 import ClientCard from './ClientCard.vue'
 import type { ClientDTO } from '@/api/monitor'
 
-const props = withDefaults(defineProps<{
-  clients?: ClientDTO[]
-  loading?: boolean
-  sortBy?: string
-}>(), {
-  clients: () => [],
-  loading: false,
-  sortBy: 'default'
-})
+const props = withDefaults(
+  defineProps<{
+    clients?: ClientDTO[]
+    loading?: boolean
+    sortBy?: string
+  }>(),
+  {
+    clients: () => [],
+    loading: false,
+    sortBy: 'default'
+  }
+)
 
 const emit = defineEmits<{
   (e: 'update:sortBy', val: string): void
@@ -84,11 +87,12 @@ function getSortIcon(key: string) {
 
 <style scoped>
 .client-list-container {
-  --client-list-columns: minmax(260px, 1.08fr) minmax(340px, 1.32fr) minmax(96px, 0.46fr) minmax(96px, 0.46fr) minmax(80px, 0.34fr) minmax(130px, 0.56fr);
+  --client-list-columns: minmax(260px, 1.08fr) minmax(340px, 1.32fr) minmax(96px, 0.46fr)
+    minmax(96px, 0.46fr) minmax(80px, 0.34fr) minmax(130px, 0.56fr);
 
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 200px);
+  min-height: min(760px, calc(100vh - 260px));
   padding: 0;
   overflow: hidden;
 }
@@ -97,7 +101,7 @@ function getSortIcon(key: string) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
 
 .client-grid {
@@ -166,7 +170,8 @@ button.header-col {
   min-width: 1072px;
 }
 
-.empty-state, .loading-state {
+.empty-state,
+.loading-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -195,7 +200,7 @@ button.header-col {
   .client-list-container {
     --client-list-columns: 1fr;
 
-    height: auto;
+    min-height: auto;
     min-height: 420px;
     overflow: visible;
   }
@@ -207,6 +212,8 @@ button.header-col {
 
   .client-grid,
   .list-body {
+    gap: 12px;
+    padding: 14px;
     min-width: 0;
   }
 

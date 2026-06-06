@@ -3,16 +3,14 @@
     <div class="search-icon">
       <Search :size="16" />
     </div>
-    <input 
-      type="text" 
-      class="search-input" 
-      placeholder="输入备注或主机名搜索局域网设备..." 
+    <input
+      type="text"
+      class="search-input"
+      placeholder="输入备注或主机名搜索局域网设备..."
       :value="modelValue"
       @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     />
-    <div class="search-hint">
-      <kbd>CTRL</kbd> + <kbd>K</kbd>
-    </div>
+    <div class="search-hint"><kbd>CTRL</kbd> + <kbd>K</kbd></div>
   </div>
 </template>
 
@@ -45,15 +43,17 @@ onUnmounted(() => {
   align-items: center;
   padding: 0 20px;
   height: 56px;
-  border-radius: 100px;
-  margin-bottom: 24px;
+  border-radius: 20px;
   position: relative;
   overflow: hidden;
 }
 
 .search-container:focus-within {
   border-color: var(--system-blue);
-  box-shadow: 0 0 0 3px var(--system-blue-dim), var(--glass-shadow), var(--glass-inner-shadow);
+  box-shadow:
+    0 0 0 3px var(--system-blue-dim),
+    var(--glass-shadow),
+    var(--glass-inner-shadow);
   background: var(--glass-bg-hover);
 }
 
@@ -107,10 +107,9 @@ kbd {
 
 @media (max-width: 560px) {
   .search-container {
-    height: auto;
     min-height: 56px;
-    border-radius: var(--radius-lg);
-    align-items: flex-start;
+    border-radius: 18px;
+    align-items: center;
     padding: 16px;
   }
 

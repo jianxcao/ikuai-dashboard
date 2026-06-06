@@ -5,8 +5,8 @@
         <img class="brand-mark" src="/ikuai-icon.svg" alt="" />
         <div class="brand-copy">
           <span class="brand-text">iKuai Dashboard</span>
-          <span class="brand-subtitle">爱快实时监控</span>
-          <span class="brand-version">构建 {{ buildVersion }}</span>
+          <span class="brand-subtitle">Fluid Network Console</span>
+          <span class="brand-version"> {{ buildVersion }}</span>
         </div>
       </div>
 
@@ -27,19 +27,40 @@
         </select>
       </div>
 
-      <div v-if="!configurationOnly" class="nav-tabs" role="tablist" aria-label="监控视图">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          :class="['nav-tab', { active: currentTab === tab.id }]"
-          :aria-selected="currentTab === tab.id"
-          role="tab"
-          @click="emit('tab-change', tab.id)"
-        >
-          <component :is="tab.icon" :size="15" />
-          <span>{{ tab.label }}</span>
-        </button>
+      <div class="nav-group">
+        <p class="nav-group-title">{{ configurationOnly ? '设置' : '核心视图' }}</p>
+        <div class="nav-tabs" role="tablist" aria-label="主导航">
+          <button
+            v-for="tab in primaryTabs"
+            :key="tab.id"
+            type="button"
+            :class="['nav-tab', { active: currentTab === tab.id }]"
+            :aria-selected="currentTab === tab.id"
+            role="tab"
+            @click="handleTabChange(tab.id)"
+          >
+            <component :is="tab.icon" :size="15" />
+            <span>{{ tab.label }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="secondaryTabs.length" class="nav-group secondary-group">
+        <p class="nav-group-title">扩展模块</p>
+        <div class="nav-tabs" role="tablist" aria-label="扩展模块">
+          <button
+            v-for="tab in secondaryTabs"
+            :key="tab.id"
+            type="button"
+            :class="['nav-tab', { active: currentTab === tab.id }]"
+            :aria-selected="currentTab === tab.id"
+            role="tab"
+            @click="handleTabChange(tab.id)"
+          >
+            <component :is="tab.icon" :size="15" />
+            <span>{{ tab.label }}</span>
+          </button>
+        </div>
       </div>
 
       <div class="header-actions">
@@ -74,64 +95,174 @@
           <span>登出</span>
         </button>
       </div>
-
     </nav>
 
-    <div v-if="!configurationOnly" class="mobile-router-bar glass-panel" aria-label="移动端服务器切换">
-      <div class="mobile-router-meta">
-        <div class="mobile-router-name">
-          <Server :size="15" />
-          <span>{{ activeRouter?.name || '未选择服务器' }}</span>
+    <div class="mobile-topbar glass-panel">
+      <div class="mobile-brand">
+        <img class="mobile-brand-mark" src="/ikuai-icon.svg" alt="" />
+        <div class="mobile-brand-copy">
+          <span class="mobile-title">{{ activeTab?.mobileLabel || '首页' }}</span>
+          <span class="mobile-subtitle">
+            {{ configurationOnly ? '配置中心' : activeRouter?.name || statusLabel }}
+          </span>
         </div>
-        <span class="mobile-build-version">构建 {{ buildVersion }}</span>
       </div>
-      <select
-        class="mobile-router-select"
-        :value="config.active_router_id"
-        :disabled="switching !== null || config.routers.length <= 1"
-        aria-label="切换爱快服务器"
-        @change="handleRouterChange"
-      >
-        <option v-for="router in config.routers" :key="router.id" :value="router.id">
-          {{ router.name }}
-        </option>
-      </select>
+
+      <div class="mobile-topbar-actions">
+        <!-- <button
+          type="button"
+          class="icon-pill"
+          :aria-expanded="moreOpen"
+          aria-controls="mobile-more-sheet"
+          @click="moreOpen = !moreOpen"
+        >
+          <PanelsTopLeft :size="16" />
+        </button> -->
+
+        <button
+          v-if="authEnabled"
+          type="button"
+          class="icon-pill"
+          aria-label="登出"
+          @click="handleLogout"
+        >
+          <LogOut :size="16" />
+        </button>
+      </div>
     </div>
+
+    <transition name="sheet-fade">
+      <div
+        v-if="moreOpen && !configurationOnly"
+        class="mobile-sheet-backdrop"
+        @click="moreOpen = false"
+      />
+    </transition>
+
+    <transition name="sheet-rise">
+      <section
+        v-if="moreOpen"
+        id="mobile-more-sheet"
+        class="mobile-more-sheet glass-panel"
+        aria-label="更多导航"
+      >
+        <div class="mobile-sheet-head">
+          <div>
+            <p class="sheet-title">更多模块</p>
+            <span class="sheet-subtitle">服务器切换、主题和扩展视图</span>
+          </div>
+          <button type="button" class="icon-pill" aria-label="关闭" @click="moreOpen = false">
+            <X :size="16" />
+          </button>
+        </div>
+
+        <div v-if="!configurationOnly" class="mobile-sheet-block">
+          <span class="mobile-sheet-label">切换服务器</span>
+          <select
+            class="mobile-router-select"
+            :value="config.active_router_id"
+            :disabled="switching !== null || config.routers.length <= 1"
+            aria-label="切换爱快服务器"
+            @change="handleRouterChange"
+          >
+            <option v-for="router in config.routers" :key="router.id" :value="router.id">
+              {{ router.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="mobile-sheet-block">
+          <span class="mobile-sheet-label">扩展视图</span>
+          <div class="mobile-secondary-grid">
+            <button
+              v-for="tab in mobileSheetTabs"
+              :key="tab.id"
+              type="button"
+              :class="['mobile-secondary-tab', { active: currentTab === tab.id }]"
+              @click="handleTabChange(tab.id)"
+            >
+              <component :is="tab.icon" :size="16" />
+              <span>{{ tab.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="mobile-sheet-block">
+          <span class="mobile-sheet-label">主题切换</span>
+          <div class="theme-switcher mobile-theme-switcher" aria-label="主题切换">
+            <button
+              v-for="item in themes"
+              :key="item.id"
+              type="button"
+              class="theme-chip"
+              :aria-pressed="theme === item.id"
+              :title="item.label"
+              @click="emit('theme-change', item.id)"
+            >
+              <component :is="item.id === 'liquid-dark' ? Moon : SunMedium" :size="14" />
+              <span>{{ item.shortLabel }}</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </transition>
 
     <nav v-if="!configurationOnly" class="bottom-nav glass-panel" aria-label="移动主导航">
       <button
-        v-for="tab in tabs"
+        v-for="tab in primaryTabs"
         :key="tab.id"
         type="button"
         :class="['bottom-tab', { active: currentTab === tab.id }]"
         :aria-current="currentTab === tab.id ? 'page' : undefined"
-        @click="emit('tab-change', tab.id)"
+        @click="handleTabChange(tab.id)"
       >
-        <component :is="tab.icon" :size="19" />
+        <component :is="tab.icon" :size="18" />
         <span>{{ tab.mobileLabel }}</span>
+      </button>
+      <button
+        type="button"
+        :class="['bottom-tab', 'more-tab', { active: moreOpen || isSecondaryActive }]"
+        :aria-expanded="moreOpen"
+        aria-controls="mobile-more-sheet"
+        @click="moreOpen = !moreOpen"
+      >
+        <Ellipsis :size="18" />
+        <span>更多</span>
       </button>
     </nav>
   </header>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Activity, BarChart3, LogOut, Moon, Network, Server, Settings, ShieldCheck, SlidersHorizontal, SunMedium, Waypoints, Wifi } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { Ellipsis, LogOut, Moon, Server, SunMedium, X } from 'lucide-vue-next'
 import { useRouterConfig } from '@/composables/useRouterConfig'
 import { useAuth } from '@/composables/useAuth'
 import type { AppTheme } from '@/composables/useTheme'
 
-withDefaults(defineProps<{
-  currentTab?: string
-  connected?: boolean
-  configurationOnly?: boolean
-  theme: AppTheme
-  themes: Array<{ id: AppTheme; label: string; shortLabel: string }>
-}>(), {
-  currentTab: 'interface',
-  connected: false,
-  configurationOnly: false,
-})
+type NavTab = {
+  id: string
+  label: string
+  mobileLabel: string
+  icon: unknown
+  primary?: boolean
+}
+
+const props = withDefaults(
+  defineProps<{
+    currentTab?: string
+    connected?: boolean
+    configurationOnly?: boolean
+    theme: AppTheme
+    themes: Array<{ id: AppTheme; label: string; shortLabel: string }>
+    tabs: NavTab[]
+  }>(),
+  {
+    currentTab: 'interface',
+    connected: false,
+    configurationOnly: false
+  }
+)
 
 const emit = defineEmits<{
   (event: 'tab-change', value: string): void
@@ -141,6 +272,28 @@ const emit = defineEmits<{
 const { config, activeRouter, switching, status, activate } = useRouterConfig()
 const { authEnabled, logout } = useAuth()
 const buildVersion = import.meta.env.VITE_APP_VERSION || 'dev'
+const moreOpen = ref(false)
+
+const primaryTabs = computed(() => props.tabs.filter((tab) => tab.primary))
+const secondaryTabs = computed(() => props.tabs.filter((tab) => !tab.primary))
+const mobileSheetTabs = computed(() => {
+  if (props.configurationOnly) {
+    return props.tabs.filter((tab) => tab.id === 'settings')
+  }
+  return secondaryTabs.value
+})
+
+const activeTab = computed(() => props.tabs.find((tab) => tab.id === props.currentTab))
+const isSecondaryActive = computed(() =>
+  secondaryTabs.value.some((tab) => tab.id === props.currentTab)
+)
+
+watch(
+  () => props.currentTab,
+  () => {
+    moreOpen.value = false
+  }
+)
 
 async function handleLogout() {
   await logout()
@@ -158,16 +311,10 @@ function handleRouterChange(event: Event) {
   }
 }
 
-const tabs = [
-  { id: 'interface', label: '首页看板', mobileLabel: '首页', icon: Activity },
-  { id: 'lan', label: '局域网客户端', mobileLabel: '终端', icon: Wifi },
-  { id: 'network-map', label: '网络拓扑', mobileLabel: '拓扑', icon: Network },
-  { id: 'security-hub', label: '安全中心', mobileLabel: '安全', icon: ShieldCheck },
-  { id: 'multi-wan', label: '多 WAN', mobileLabel: 'WAN', icon: Waypoints },
-  { id: 'insights', label: '监控分析', mobileLabel: '分析', icon: BarChart3 },
-  { id: 'resources', label: '配置管理', mobileLabel: '配置', icon: SlidersHorizontal },
-  { id: 'settings', label: '路由器设置', mobileLabel: '设置', icon: Settings },
-]
+function handleTabChange(tabId: string) {
+  emit('tab-change', tabId)
+  moreOpen.value = false
+}
 </script>
 
 <style scoped>
@@ -181,46 +328,48 @@ const tabs = [
   display: flex;
   flex-direction: column;
   gap: 18px;
-  width: 248px;
-  padding: 16px;
+  width: 264px;
+  padding: 18px;
 }
 
-.brand {
+.brand,
+.mobile-brand {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
 }
 
-.brand-copy {
+.brand-copy,
+.mobile-brand-copy {
   min-width: 0;
 }
 
 .brand-mark {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
 }
 
-.brand-text {
+.brand-text,
+.mobile-title {
   display: block;
   color: var(--text-primary);
   font-size: 15px;
   font-weight: 760;
-  letter-spacing: 0;
   white-space: nowrap;
 }
 
-.brand-subtitle {
+.brand-subtitle,
+.mobile-subtitle {
   display: block;
   margin-top: 3px;
   color: var(--text-tertiary);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 640;
 }
 
-.brand-version,
-.mobile-build-version {
+.brand-version {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -246,57 +395,63 @@ const tabs = [
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--control-border);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--control-bg);
 }
 
-.router-switcher-head,
-.mobile-router-name {
+.router-switcher-head {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-width: 0;
   color: var(--text-tertiary);
   font-size: 12px;
   font-weight: 760;
 }
 
-.mobile-router-meta {
-  min-width: 0;
-}
-
 .router-select,
 .mobile-router-select {
   width: 100%;
-  min-height: 38px;
-  padding: 0 40px 0 10px;
+  min-height: 40px;
+  padding: 0 40px 0 12px;
   color: var(--text-primary);
   border: 1px solid var(--control-border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--glass-bg-strong);
   font-size: 13px;
   font-weight: 720;
   appearance: none;
   background-image:
     linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%),
-    var(--glass-bg-strong);
+    linear-gradient(135deg, currentColor 50%, transparent 50%), var(--glass-bg-strong);
   background-position:
     calc(100% - 23px) 50%,
     calc(100% - 16px) 50%,
     0 0;
-  background-size: 7px 7px, 7px 7px, auto;
+  background-size:
+    7px 7px,
+    7px 7px,
+    auto;
   background-repeat: no-repeat;
 }
 
-.router-select:disabled,
-.mobile-router-select:disabled {
-  opacity: 0.62;
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nav-group-title,
+.mobile-sheet-label,
+.sheet-title {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .nav-tabs {
   display: flex;
-  flex: 1;
   flex-direction: column;
   gap: 8px;
 }
@@ -305,19 +460,23 @@ const tabs = [
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 7px;
-  min-height: 42px;
+  gap: 8px;
+  min-height: 44px;
   width: 100%;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 14px;
   background: transparent;
   color: var(--text-secondary);
   font-size: 13px;
-  font-weight: 620;
+  font-weight: 650;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .nav-tab:hover {
@@ -329,35 +488,47 @@ const tabs = [
   color: var(--text-primary);
   background: var(--control-active);
   border-color: var(--system-blue);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 0 24px var(--system-blue-dim);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 0 24px var(--system-blue-dim);
+}
+
+.secondary-group {
+  padding-top: 4px;
+  border-top: 1px solid var(--control-border);
 }
 
 .header-actions {
   display: flex;
-  align-items: stretch;
   flex-direction: column;
   justify-content: flex-end;
   gap: 10px;
   margin-top: auto;
-  min-width: 0;
 }
 
 .status-area {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 38px;
+  min-height: 40px;
   padding: 0 12px;
   border: 1px solid var(--control-border);
   border-radius: 999px;
   background: var(--control-bg);
 }
 
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--system-green);
+  box-shadow: 0 0 0 4px var(--system-green-dim);
+}
+
 .status-text {
   color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
+  font-weight: 700;
 }
 
 .theme-switcher {
@@ -376,12 +547,13 @@ const tabs = [
   font-weight: 700;
 }
 
-.logout-btn {
+.logout-btn,
+.icon-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 34px;
   padding: 0 12px;
   border: 1px solid var(--control-border);
   border-radius: 999px;
@@ -390,59 +562,71 @@ const tabs = [
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
-  white-space: nowrap;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
 }
 
-.logout-btn:hover {
-  color: var(--system-red);
-  border-color: color-mix(in srgb, var(--system-red) 42%, var(--control-border));
-  background: var(--system-red-dim);
+.logout-btn:hover,
+.icon-pill:hover {
+  color: var(--text-primary);
+  border-color: var(--glass-border-light);
+  background: var(--control-bg-hover);
 }
 
-.bottom-nav {
+.mobile-topbar,
+.bottom-nav,
+.mobile-more-sheet {
   display: none;
 }
 
-.mobile-router-bar {
-  display: none;
-}
-
-@media (max-width: 920px) {
+@media (max-width: 1100px) {
   .side-nav {
     display: none;
   }
 
-  .mobile-router-bar {
+  .mobile-topbar {
     position: fixed;
     top: max(10px, env(safe-area-inset-top));
     right: max(10px, env(safe-area-inset-right));
     left: max(10px, env(safe-area-inset-left));
-    z-index: 60;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(132px, 42%);
-    gap: 10px;
+    z-index: 80;
+    display: flex;
     align-items: center;
-    padding: 10px;
-    border-radius: 18px;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 22px;
   }
 
-  .mobile-router-name {
-    color: var(--text-secondary);
+  .mobile-brand-mark {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
   }
 
-  .mobile-router-name span {
-    min-width: 0;
+  .mobile-title {
+    font-size: 14px;
+  }
+
+  .mobile-subtitle {
+    max-width: 42vw;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
-  .mobile-build-version {
-    min-height: 20px;
-    margin-top: 4px;
-    padding: 0 7px;
-    font-size: 10px;
+  .mobile-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .icon-pill {
+    width: 38px;
+    min-height: 38px;
+    padding: 0;
   }
 
   .bottom-nav {
@@ -450,10 +634,10 @@ const tabs = [
     right: max(10px, env(safe-area-inset-right));
     bottom: max(10px, env(safe-area-inset-bottom));
     left: max(10px, env(safe-area-inset-left));
-    z-index: 60;
+    z-index: 80;
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 4px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
     padding: 8px;
     border-radius: 24px;
   }
@@ -463,14 +647,18 @@ const tabs = [
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 3px;
+    gap: 4px;
     min-width: 0;
-    min-height: 50px;
+    min-height: 56px;
+    padding: 0 4px;
     color: var(--text-tertiary);
     border: 0;
     border-radius: 16px;
     background: transparent;
     cursor: pointer;
+    transition:
+      color 0.18s ease,
+      background 0.18s ease;
   }
 
   .bottom-tab span {
@@ -487,21 +675,121 @@ const tabs = [
     background: var(--control-active);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   }
+
+  .mobile-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 84;
+    background: rgba(3, 10, 14, 0.34);
+    backdrop-filter: blur(6px);
+  }
+
+  .mobile-more-sheet {
+    position: fixed;
+    right: max(10px, env(safe-area-inset-right));
+    bottom: calc(88px + max(10px, env(safe-area-inset-bottom)));
+    left: max(10px, env(safe-area-inset-left));
+    z-index: 85;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+    border-radius: 24px;
+  }
+
+  .mobile-sheet-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .sheet-subtitle {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  .mobile-sheet-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mobile-secondary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .mobile-secondary-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 14px;
+    border: 1px solid var(--control-border);
+    border-radius: 16px;
+    background: var(--control-bg);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .mobile-secondary-tab.active {
+    color: var(--text-primary);
+    border-color: var(--system-blue);
+    background: var(--control-active);
+  }
+
+  .mobile-theme-switcher {
+    width: fit-content;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 640px) {
+  .mobile-subtitle {
+    max-width: 34vw;
+  }
+
   .bottom-nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .bottom-tab {
+    min-height: 54px;
+  }
+
+  .mobile-secondary-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 380px) {
-  .mobile-router-bar {
-    grid-template-columns: 1fr;
-  }
+.sheet-rise-enter-active,
+.sheet-rise-leave-active {
+  transition:
+    transform 0.22s ease,
+    opacity 0.22s ease;
+}
 
-  .bottom-nav {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.sheet-rise-enter-from,
+.sheet-rise-leave-to {
+  transform: translateY(12px);
+  opacity: 0;
+}
+
+.sheet-fade-enter-active,
+.sheet-fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.sheet-fade-enter-from,
+.sheet-fade-leave-to {
+  opacity: 0;
 }
 </style>
