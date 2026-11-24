@@ -63,3 +63,31 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 		})
 	}
 }
+
+// ReadOnlyMiddleware 拦截服务端只读保护模式 (READ_ONLY=true) 下的写入操作。
+// 放行只读查询、节点连接测试与 Dry-Run 请求预览。
+func ReadOnlyMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !config.IsReadOnly() {
+			c.Next()
+			return
+		}
+		method := c.Request.Method
+		if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
+			c.Next()
+			return
+		}
+		if c.Request.URL.Path == "/api/v1/routers/test" {
+			c.Next()
+			return
+		}
+		if strings.EqualFold(c.Query("dry_run"), "true") || c.Query("dry_run") == "1" {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"code":    403,
+			"message": "当前处于服务端只读保护模式 (READ_ONLY=true)，禁止执行写入操作；仍可使用 Dry-Run 预览",
+		})
+	}
+}

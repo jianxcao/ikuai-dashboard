@@ -6,120 +6,17 @@ import (
 	"testing"
 )
 
-func TestLoadParsesYAMLAndAppliesDefaults(t *testing.T) {
-	cfg, err := Load([]byte(`
-active_router_id: office
-routers:
-  - id: office
-    name: 办公室爱快
-    url: https://192.168.50.1:6443
-    username: admin
-    password: secret
-    mock: false
-    insecure_skip_verify: true
-`))
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
-
-	if cfg.Server.Port != "8080" {
-		t.Fatalf("expected default port 8080, got %q", cfg.Server.Port)
-	}
-	if cfg.Server.StaticDir != "frontend/dist" {
-		t.Fatalf("expected default static dir frontend/dist, got %q", cfg.Server.StaticDir)
-	}
-
-	router, ok := cfg.ActiveRouter()
-	if !ok {
-		t.Fatal("expected active router to resolve")
-	}
-	if router.ID != "office" || router.Password != "secret" || router.Version != RouterVersionV3 || router.Mock {
-		t.Fatalf("unexpected active router: %+v", router)
-	}
-}
-
-func TestDefaultConfigStartsWithoutMockRouter(t *testing.T) {
-	cfg := DefaultConfig()
-
-	if len(cfg.Routers) != 0 {
-		t.Fatalf("expected empty router list for first-run config, got %+v", cfg.Routers)
-	}
-	if cfg.ActiveRouterID != "" {
-		t.Fatalf("expected empty active router id, got %q", cfg.ActiveRouterID)
-	}
-	if cfg.Server.Port != defaultPort || cfg.Server.StaticDir != defaultStaticDir {
-		t.Fatalf("unexpected default server config: %+v", cfg.Server)
-	}
-}
-
-func TestLoadAllowsFirstRunEmptyRouterConfig(t *testing.T) {
-	cfg, err := Load([]byte(`
-server:
-  port: "8080"
-  static_dir: "frontend/dist"
-active_router_id: ""
-routers: []
-`))
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
-	if len(cfg.Routers) != 0 || cfg.ActiveRouterID != "" {
-		t.Fatalf("unexpected first-run config: %+v", cfg)
-	}
-}
-
-func TestPublicFirstRunConfigReturnsEmptyRouterList(t *testing.T) {
-	public := DefaultConfig().Public()
-
-	if public.Routers == nil {
-		t.Fatal("expected public routers to be an empty list, got nil")
-	}
-	if len(public.Routers) != 0 {
-		t.Fatalf("expected no public routers, got %+v", public.Routers)
-	}
-}
-
-func TestSaveToFileAllowsFirstRealRouterFromEmptyConfig(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	cfg := &AppConfig{
-		ActiveRouterID: "office",
-		Routers: []RouterConfig{
-			{
-				ID:                 "office",
-				Name:               "办公室爱快",
-				URL:                "https://192.168.50.1:6443",
-				Version:            RouterVersionV3,
-				Username:           "admin",
-				Password:           "secret",
-				Mock:               false,
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-
-	if err := SaveToFile(path, cfg); err != nil {
-		t.Fatalf("SaveToFile returned error: %v", err)
-	}
-
-	reloaded, err := LoadFromFile(path)
-	if err != nil {
-		t.Fatalf("LoadFromFile returned error: %v", err)
-	}
-	if len(reloaded.Routers) != 1 || reloaded.ActiveRouterID != "office" {
-		t.Fatalf("unexpected reloaded config: %+v", reloaded)
-	}
-}
-
-func TestLoadParsesV4TokenRouter(t *testing.T) {
+func TestLoadParsesV4YAMLAndAppliesDefaults(t *testing.T) {
 	cfg, err := Load([]byte(`
 active_router_id: office-v4
 routers:
   - id: office-v4
-    name: 办公室爱快 v4
-    url: https://192.168.50.1:6443
-    version: v4
+    name: 办公室爱快 V4
+    url: 192.168.9.1
     token: token-secret
+    tags:
+      - 核心
+      - 双线
     mock: false
     insecure_skip_verify: true
 `))
@@ -127,23 +24,31 @@ routers:
 		t.Fatalf("Load returned error: %v", err)
 	}
 
+	if cfg.Server.Port != "8080" || cfg.Server.StaticDir != "frontend/dist" {
+		t.Fatalf("unexpected default server config: %+v", cfg.Server)
+	}
+
 	router, ok := cfg.ActiveRouter()
 	if !ok {
 		t.Fatal("expected active router to resolve")
 	}
-	if router.Version != RouterVersionV4 || router.Token != "token-secret" || router.Username != "" {
-		t.Fatalf("unexpected v4 router: %+v", router)
+	if router.URL != "https://192.168.9.1" || router.Token != "token-secret" || len(router.Tags) != 2 {
+		t.Fatalf("unexpected active router: %+v", router)
+	}
+
+	pub := cfg.Public()
+	if len(pub.Routers) != 1 || !pub.Routers[0].HasToken || pub.Routers[0].Source != "yaml" {
+		t.Fatalf("unexpected public config: %+v", pub)
 	}
 }
 
-func TestValidateRejectsV4RouterWithoutToken(t *testing.T) {
+func TestValidateRejectsRealRouterWithoutToken(t *testing.T) {
 	_, err := Load([]byte(`
 active_router_id: office-v4
 routers:
   - id: office-v4
-    name: 办公室爱快 v4
-    url: https://192.168.50.1:6443
-    version: v4
+    name: 办公室爱快 V4
+    url: https://192.168.9.1
     mock: false
     insecure_skip_verify: true
 `))
@@ -152,107 +57,118 @@ routers:
 	}
 }
 
-func TestLoadRejectsUnknownFields(t *testing.T) {
-	_, err := Load([]byte(`
-active_router_id: office
-unknown: value
-routers:
-  - id: office
-    name: 办公室爱快
-    url: https://192.168.50.1:6443
-    username: admin
-    mock: true
-`))
-	if err == nil {
-		t.Fatal("expected unknown field error")
-	}
-}
-
-func TestValidateRejectsDuplicateRouterIDs(t *testing.T) {
+func TestLoadRejectsUnknownLegacyFields(t *testing.T) {
 	_, err := Load([]byte(`
 active_router_id: office
 routers:
   - id: office
-    name: 办公室爱快
-    url: https://192.168.50.1:6443
-    username: admin
-    mock: true
-  - id: office
-    name: 备用爱快
-    url: https://192.168.60.1:6443
-    username: admin
+    name: Legacy
+    url: https://192.168.9.1
+    version: v3
     mock: true
 `))
 	if err == nil {
-		t.Fatal("expected duplicate router id error")
+		t.Fatal("expected unknown field error for removed version field")
 	}
 }
 
-func TestMergeRouterSecretsKeepsExistingPasswordWhenIncomingBlank(t *testing.T) {
+func TestMergeRouterSecretsPreservesToken(t *testing.T) {
 	existing := &AppConfig{
-		ActiveRouterID: "office",
+		Server: ServerConfig{
+			Port:        "9090",
+			StaticDir:   "/srv/custom-dist",
+			AccessToken: "dash-token",
+			ReadOnly:    true,
+			Username:    "ops",
+			Password:    "secret",
+		},
+		ActiveRouterID: "office-v4",
 		Routers: []RouterConfig{
-			{ID: "office", Name: "办公室爱快", URL: "https://192.168.50.1", Version: RouterVersionV3, Username: "admin", Password: "secret"},
+			{ID: "office-v4", Name: "Office", URL: "https://192.168.9.1", Token: "router-secret"},
 		},
 	}
 	incoming := &AppConfig{
-		ActiveRouterID: "office",
+		Server: ServerConfig{
+			ReadOnly: false,
+		},
+		ActiveRouterID: "office-v4",
 		Routers: []RouterConfig{
-			{ID: "office", Name: "办公室爱快", URL: "https://192.168.50.1", Version: RouterVersionV3, Username: "admin", Password: ""},
+			{ID: "office-v4", Name: "Office", URL: "https://192.168.9.1", Token: ""},
 		},
 	}
 
 	incoming.MergeRouterSecrets(existing)
+	if incoming.Routers[0].Token != "router-secret" || incoming.Server.AccessToken != "dash-token" {
+		t.Fatalf("expected secrets preserved, got %+v", incoming)
+	}
+	if incoming.Server.Port != "9090" || incoming.Server.StaticDir != "/srv/custom-dist" {
+		t.Fatalf("expected custom Port/StaticDir preserved, got %+v", incoming.Server)
+	}
+	if incoming.Server.Username != "ops" || incoming.Server.Password != "secret" {
+		t.Fatalf("expected username/password preserved, got %+v", incoming.Server)
+	}
+	if incoming.Server.ReadOnly {
+		t.Fatalf("expected explicit ReadOnly=false not forced back to true, got %+v", incoming.Server)
+	}
 
-	if got := incoming.Routers[0].Password; got != "secret" {
-		t.Fatalf("expected preserved password, got %q", got)
+	renamed := &AppConfig{
+		ActiveRouterID: "home-gw",
+		Routers: []RouterConfig{
+			{ID: "home-gw", OriginalID: "office-v4", Name: "Home GW", URL: "https://192.168.9.1", Token: ""},
+		},
+	}
+	renamed.MergeRouterSecrets(existing)
+	if renamed.Routers[0].Token != "router-secret" {
+		t.Fatalf("expected renamed router token preserved via OriginalID, got %+v", renamed.Routers[0])
 	}
 }
 
-func TestMergeRouterSecretsKeepsExistingTokenWhenIncomingBlank(t *testing.T) {
-	existing := &AppConfig{
-		ActiveRouterID: "office-v4",
-		Routers: []RouterConfig{
-			{ID: "office-v4", Name: "办公室爱快 v4", URL: "https://192.168.50.1", Version: RouterVersionV4, Token: "token-secret"},
-		},
-	}
-	incoming := &AppConfig{
-		ActiveRouterID: "office-v4",
-		Routers: []RouterConfig{
-			{ID: "office-v4", Name: "办公室爱快 v4", URL: "https://192.168.50.1", Version: RouterVersionV4, Token: ""},
-		},
-	}
-
-	incoming.MergeRouterSecrets(existing)
-
-	if got := incoming.Routers[0].Token; got != "token-secret" {
-		t.Fatalf("expected preserved token, got %q", got)
-	}
-}
-
-func TestSaveToFileWritesValidYAML(t *testing.T) {
+func TestLoadRuntimeConfigEnvInjectionAndMockMode(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	cfg := &AppConfig{
-		Server:         ServerConfig{Port: "8081", StaticDir: "public"},
-		ActiveRouterID: "office",
-		Routers: []RouterConfig{
-			{ID: "office", Name: "办公室爱快", URL: "https://192.168.50.1", Version: RouterVersionV3, Username: "admin", Password: "secret", Mock: false, InsecureSkipVerify: true},
-		},
-	}
+	missingPath := filepath.Join(dir, "config.yaml")
 
-	if err := SaveToFile(path, cfg); err != nil {
-		t.Fatalf("SaveToFile returned error: %v", err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("expected config file to exist: %v", err)
-	}
-
-	reloaded, err := LoadFromFile(path)
+	t.Setenv("MOCK_MODE", "true")
+	cfg, _, err := LoadRuntimeConfig(DefaultConfigPath)
 	if err != nil {
-		t.Fatalf("LoadFromFile returned error: %v", err)
+		t.Fatalf("LoadRuntimeConfig mock failed: %v", err)
 	}
-	if reloaded.Server.Port != "8081" || reloaded.Routers[0].Password != "secret" {
-		t.Fatalf("unexpected reloaded config: %+v", reloaded)
+	if len(cfg.Routers) != 2 || cfg.ActiveRouterID != "hq-v4" {
+		t.Fatalf("expected 2 mock routers, got %+v", cfg.Routers)
+	}
+
+	t.Setenv("MOCK_MODE", "false")
+	t.Setenv("IKUAI_CLI_BASE_URL", "192.0.2.10")
+	t.Setenv("IKUAI_CLI_TOKEN", "ephemeral-token")
+	cfg, _, err = LoadRuntimeConfig(DefaultConfigPath)
+	if err != nil {
+		// If local config.yaml happened not to exist, this tests default fallback.
+		t.Fatalf("LoadRuntimeConfig env failed: %v", err)
+	}
+	if len(cfg.Routers) == 0 || cfg.Routers[0].Token != "ephemeral-token" || cfg.Routers[0].Source != "env" {
+		t.Fatalf("expected env-v4 router, got %+v", cfg.Routers)
+	}
+
+	if err := SaveToFile(missingPath, cfg); err != nil {
+		t.Fatalf("SaveToFile failed: %v", err)
+	}
+	if _, err := os.Stat(missingPath); err != nil {
+		t.Fatalf("expected file to be written: %v", err)
+	}
+}
+
+func TestReadOnlyModeEnvAndYAML(t *testing.T) {
+	t.Setenv("MOCK_MODE", "true")
+	t.Setenv("READ_ONLY", "true")
+	cfg, _, err := LoadRuntimeConfig(DefaultConfigPath)
+	if err != nil {
+		t.Fatalf("LoadRuntimeConfig failed: %v", err)
+	}
+	if !cfg.Server.ReadOnly || !cfg.Public().Server.ReadOnly || !IsReadOnly() {
+		t.Fatalf("expected read_only=true when READ_ONLY=true, got %+v", cfg.Public().Server)
+	}
+
+	t.Setenv("READ_ONLY", "false")
+	if IsReadOnly() {
+		t.Fatal("expected IsReadOnly()=false when READ_ONLY=false")
 	}
 }

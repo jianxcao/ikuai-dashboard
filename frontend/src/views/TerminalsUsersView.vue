@@ -1,0 +1,701 @@
+<template>
+  <section class="terminals-page">
+    <header class="ws-head v4-panel">
+      <div>
+        <span class="ws-eyebrow font-mono">TERMINALS & AUTH USERS</span>
+        <h1>终端设备与认证用户</h1>
+        <p>实时查看局域网双栈终端速率，支持终端标注、静态 DHCP、一键限速、MAC 阻断与 Web 认证服务管理。</p>
+      </div>
+    </header>
+
+    <div ref="subtabBarEl" class="subtab-bar" role="tablist">
+      <button
+        v-for="tab in subTabs"
+        :key="tab.key"
+        type="button"
+        class="subtab-pill"
+        :class="{ active: activeTab === tab.key }"
+        @click="activeTab = tab.key"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <div v-if="actionToast" class="toast-banner">{{ actionToast }}</div>
+
+    <!-- Client Modes -->
+    <template v-if="isClientMode">
+      <div class="v4-card clients-card">
+        <div class="toolbar">
+          <div class="search-box">
+            <Search :size="14" class="search-ic" />
+            <input
+              v-model.trim="search"
+              type="text"
+              class="v4-input search-input"
+              placeholder="搜索主机名、IP、MAC 或备注..."
+              @keyup.enter="loadClients"
+            />
+          </div>
+
+          <div class="toolbar-right">
+            <select v-model="sortBy" class="v4-select sort-select" aria-label="排序方式">
+              <option value="download_speed">按实时下行排序</option>
+              <option value="upload_speed">按实时上行排序</option>
+              <option value="total_down">按累计下行排序</option>
+              <option value="connections">按连接数排序</option>
+            </select>
+            <button type="button" class="v4-btn" :disabled="loading" @click="loadClients">
+              <RefreshCw :size="14" :class="{ spin: loading }" />
+              <span>刷新</span>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="error" class="error-banner">{{ error }}</div>
+
+        <div class="table-wrap">
+          <div v-if="loading && sortedClients.length === 0" class="loading-state">
+            <div class="spinner" />
+            <span class="font-mono">正在读取终端列表...</span>
+          </div>
+          <div v-else-if="sortedClients.length === 0" class="empty-state">暂无匹配终端记录</div>
+          <table v-else class="v4-table">
+            <thead>
+              <tr>
+                <th>终端名称 / 备注</th>
+                <th>IP 地址</th>
+                <th>MAC 地址</th>
+                <th>实时上行 / 下行</th>
+                <th>累计上行 / 下行</th>
+                <th>连接数</th>
+                <th>在线时长</th>
+                <th>快捷管控与画像</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in sortedClients" :key="c.mac + c.ip_addr">
+                <td>
+                  <div class="host-cell">
+                    <strong>{{ c.comment || c.hostname || '未命名终端' }}</strong>
+                    <span v-if="c.comment && c.hostname" class="sub-muted font-mono">{{ c.hostname }}</span>
+                  </div>
+                </td>
+                <td class="font-mono">{{ c.ip_addr || '—' }}</td>
+                <td class="font-mono">{{ c.mac || '—' }}</td>
+                <td class="font-mono">
+                  <span class="ic-up">↑ {{ formatSpeed(c.upload_speed) }}</span>
+                  <span class="sep">/</span>
+                  <span class="ic-down">↓ {{ formatSpeed(c.download_speed) }}</span>
+                </td>
+                <td class="font-mono">{{ formatBytes(c.total_up) }} / {{ formatBytes(c.total_down) }}</td>
+                <td class="font-mono">{{ c.connections }}</td>
+                <td class="font-mono">{{ c.uptime || c.downtime || '—' }}</td>
+                <td>
+                  <div class="client-actions">
+                    <button
+                      v-if="c.ip_addr && c.mac"
+                      type="button"
+                      class="v4-btn btn-xs"
+                      @click="openDetail(c)"
+                    >
+                      <BarChart3 :size="13" />
+                      <span>画像</span>
+                    </button>
+                    <button
+                      v-if="c.mac"
+                      type="button"
+                      class="v4-btn btn-xs"
+                      :disabled="readOnly"
+                      title="为该 MAC 添加终端备注"
+                      @click="openQuickModal('terminal', c)"
+                    >
+                      <Tag :size="12" />
+                      <span>标注</span>
+                    </button>
+                    <button
+                      v-if="c.ip_addr && c.mac"
+                      type="button"
+                      class="v4-btn btn-xs"
+                      :disabled="readOnly"
+                      title="转为 DHCP 静态绑定"
+                      @click="openQuickModal('static', c)"
+                    >
+                      <Pin :size="12" />
+                      <span>静态</span>
+                    </button>
+                    <button
+                      v-if="c.ip_addr"
+                      type="button"
+                      class="v4-btn btn-xs"
+                      :disabled="readOnly"
+                      title="设置 IP 限速"
+                      @click="openQuickModal('qos', c)"
+                    >
+                      <Gauge :size="12" />
+                      <span>限速</span>
+                    </button>
+                    <button
+                      v-if="c.mac"
+                      type="button"
+                      class="v4-btn v4-btn-danger btn-xs"
+                      :disabled="readOnly"
+                      title="添加到 MAC 访问控制"
+                      @click="openQuickModal('mac-block', c)"
+                    >
+                      <Ban :size="12" />
+                      <span>阻断</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+
+    <!-- Auth Online Sessions with 1-Click Kick -->
+    <template v-else-if="activeTab === 'auth-online'">
+      <div class="v4-card clients-card">
+        <div class="toolbar">
+          <span class="v4-badge font-mono">ikuai-cli users online</span>
+          <button type="button" class="v4-btn" @click="reloadAuthOnline">
+            <RefreshCw :size="14" />
+            <span>刷新会话</span>
+          </button>
+        </div>
+        <div v-if="error" class="error-banner">{{ error }}</div>
+        <div class="table-wrap">
+          <div v-if="authRows.length === 0" class="empty-state">当前无在线认证会话</div>
+          <table v-else class="v4-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>账号</th>
+                <th>认证类型</th>
+                <th>IP 地址</th>
+                <th>MAC</th>
+                <th>接口</th>
+                <th>上线时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in authRows" :key="String(row.id)">
+                <td class="font-mono">{{ row.id }}</td>
+                <td><strong>{{ row.username }}</strong></td>
+                <td><span class="v4-badge">{{ row.ppptype }}</span></td>
+                <td class="font-mono">{{ row.ip_addr }}</td>
+                <td class="font-mono">{{ row.mac }}</td>
+                <td><span class="v4-badge v4-badge-accent">{{ row.interface }}</span></td>
+                <td class="font-mono">{{ formatTimestamp(row.auth_time) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="v4-btn v4-btn-danger btn-xs"
+                    :disabled="readOnly"
+                    @click="kickUser(row)"
+                  >
+                    <UserX :size="13" />
+                    <span>踢下线</span>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+
+    <SingletonConfigPanel v-else-if="activeTab === 'auth-web-server'" resourceKey="auth-web-server" />
+
+    <!-- Accounts & Packages via ResourceCollectionPanel -->
+    <ResourceCollectionPanel v-else :key="activeTab" :resourceKey="activeTab" />
+
+    <!-- Client Detail Drawer -->
+    <teleport to="body">
+      <div v-if="selectedClient" class="drawer-backdrop" @click.self="closeDetail">
+        <div class="drawer-panel v4-panel">
+          <div class="drawer-head">
+            <div>
+              <strong>{{ selectedClient.comment || selectedClient.hostname || selectedClient.ip_addr }}</strong>
+              <span class="font-mono">{{ selectedClient.ip_addr }} · {{ selectedClient.mac }}</span>
+            </div>
+            <button type="button" class="v4-btn btn-xs" @click="closeDetail">
+              <X :size="15" />
+            </button>
+          </div>
+          <div class="drawer-body">
+            <div v-if="detailLoading" class="loading-state"><div class="spinner" /></div>
+            <template v-else-if="clientDetail">
+              <div class="detail-section">
+                <h4>5 分钟速率趋势</h4>
+                <div ref="detailChartEl" class="detail-chart" />
+              </div>
+              <div class="detail-section">
+                <h4>Top L7 应用协议分布</h4>
+                <div v-if="clientDetail.app_protocols.length === 0" class="empty-state">暂无应用层统计数据</div>
+                <div v-else class="app-list">
+                  <div v-for="(app, idx) in clientDetail.app_protocols" :key="idx" class="app-row">
+                    <strong>{{ String(app.appname ?? app.app_name ?? '未知应用') }}</strong>
+                    <span class="font-mono">↓ {{ formatBytes(Number(app.total_down ?? 0)) }} · ↑ {{ formatBytes(Number(app.total_up ?? 0)) }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- Quick Control Modal -->
+    <teleport to="body">
+      <div v-if="quickModal.open" class="drawer-backdrop center" @click.self="quickModal.open = false">
+        <div class="confirm-dialog v4-panel">
+          <div class="modal-top">
+            <h4>{{ quickModalTitle }}</h4>
+            <button type="button" class="v4-btn btn-xs" @click="quickModal.open = false"><X :size="14" /></button>
+          </div>
+          <div v-if="quickModal.error" class="error-banner">{{ quickModal.error }}</div>
+          <div class="modal-form">
+            <label class="field-item">
+              <span>名称 / 标签</span>
+              <input v-model.trim="quickModal.tagname" class="v4-input" />
+            </label>
+            <label v-if="quickModal.kind === 'static' || quickModal.kind === 'qos'" class="field-item">
+              <span>IP 地址</span>
+              <input v-model.trim="quickModal.ip_addr" class="v4-input font-mono" />
+            </label>
+            <label v-if="quickModal.kind !== 'qos'" class="field-item">
+              <span>MAC 地址</span>
+              <input v-model.trim="quickModal.mac" class="v4-input font-mono" />
+            </label>
+            <label v-if="quickModal.kind === 'static' || quickModal.kind === 'qos'" class="field-item">
+              <span>生效接口</span>
+              <input v-model.trim="quickModal.iface" class="v4-input font-mono" />
+            </label>
+            <template v-if="quickModal.kind === 'qos'">
+              <label class="field-item">
+                <span>上行限速 (Kbps)</span>
+                <input v-model.number="quickModal.upload" type="number" class="v4-input font-mono" />
+              </label>
+              <label class="field-item">
+                <span>下行限速 (Kbps)</span>
+                <input v-model.number="quickModal.download" type="number" class="v4-input font-mono" />
+              </label>
+            </template>
+            <label v-if="quickModal.kind === 'mac-block'" class="field-item">
+              <span>规则状态</span>
+              <select v-model="quickModal.enabled" class="v4-select">
+                <option value="yes">立即生效 (enabled=yes)</option>
+                <option value="no">先创建暂不生效 (enabled=no)</option>
+              </select>
+            </label>
+            <label v-if="quickModal.kind !== 'qos'" class="field-item">
+              <span>备注</span>
+              <input v-model.trim="quickModal.comment" class="v4-input" />
+            </label>
+          </div>
+          <div class="confirm-actions">
+            <button type="button" class="v4-btn" @click="quickModal.open = false">取消</button>
+            <button type="button" class="v4-btn v4-btn-primary" :disabled="quickModal.busy" @click="submitQuickModal">
+              {{ quickModal.busy ? '执行中...' : '确认应用' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </teleport>
+  </section>
+</template>
+
+<script setup lang="ts">
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import * as echarts from 'echarts'
+import { Ban, BarChart3, Gauge, Pin, RefreshCw, Search, Tag, UserX, X } from 'lucide-vue-next'
+import ResourceCollectionPanel from '@/components/common/ResourceCollectionPanel.vue'
+import SingletonConfigPanel from '@/components/common/SingletonConfigPanel.vue'
+import {
+  createV4Resource,
+  fetchV4ClientDetail,
+  fetchV4Clients,
+  fetchV4Resource,
+  kickV4OnlineUser,
+  type ClientDetailDTO,
+  type ClientRecordDTO,
+} from '@/api/v4'
+import { useAuth } from '@/composables/useAuth'
+import { useFleet } from '@/composables/useFleet'
+import { useChartTheme } from '@/composables/useChartTheme'
+import { formatBytes, formatSpeed, formatTimestamp } from '@/composables/useFormatters'
+
+const props = defineProps<{
+  initialSubResource?: string
+  navSeq?: number
+}>()
+
+const { readOnly } = useAuth()
+const { routerEpoch } = useFleet()
+const { palette } = useChartTheme()
+
+const subTabs = [
+  { key: 'online', label: 'IPv4 在线终端' },
+  { key: 'ipv6-online', label: 'IPv6 在线终端' },
+  { key: 'offline', label: '历史离线终端' },
+  { key: 'summary', label: '终端流量汇总' },
+  { key: 'auth-online', label: '在线认证会话' },
+  { key: 'auth-accounts', label: '认证账号管理' },
+  { key: 'auth-packages', label: '计费带宽套餐' },
+  { key: 'auth-web-server', label: 'Web 认证服务' },
+]
+
+const activeTab = ref('online')
+const subtabBarEl = ref<HTMLElement | null>(null)
+const search = ref('')
+const sortBy = ref<'download_speed' | 'upload_speed' | 'total_down' | 'connections'>('download_speed')
+const loading = ref(false)
+const error = ref<string | null>(null)
+const actionToast = ref<string | null>(null)
+const clients = ref<ClientRecordDTO[]>([])
+const authRows = ref<Array<Record<string, unknown>>>([])
+
+const selectedClient = ref<ClientRecordDTO | null>(null)
+const detailLoading = ref(false)
+const clientDetail = ref<ClientDetailDTO | null>(null)
+const detailChartEl = ref<HTMLElement | null>(null)
+let detailChart: echarts.ECharts | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+const quickModal = reactive({
+  open: false,
+  busy: false,
+  error: null as string | null,
+  kind: 'terminal' as 'terminal' | 'static' | 'qos' | 'mac-block',
+  tagname: '',
+  ip_addr: '',
+  mac: '',
+  iface: 'lan1',
+  upload: 1000,
+  download: 5000,
+  enabled: 'yes',
+  comment: '',
+})
+
+const quickModalTitle = computed(() => {
+  switch (quickModal.kind) {
+    case 'terminal':
+      return '快捷添加终端设备标注'
+    case 'static':
+      return '快捷创建 DHCP 静态地址绑定'
+    case 'qos':
+      return '快捷创建 IP 限速流控规则'
+    case 'mac-block':
+      return '快捷添加 MAC 访问控制规则'
+  }
+})
+
+const isClientMode = computed(() => ['online', 'ipv6-online', 'offline', 'summary'].includes(activeTab.value))
+
+const sortedClients = computed(() => {
+  const list = [...clients.value]
+  list.sort((a, b) => (b[sortBy.value] || 0) - (a[sortBy.value] || 0))
+  return list
+})
+
+function openQuickModal(kind: 'terminal' | 'static' | 'qos' | 'mac-block', c: ClientRecordDTO) {
+  quickModal.open = true
+  quickModal.busy = false
+  quickModal.error = null
+  quickModal.kind = kind
+  quickModal.tagname = c.comment || c.hostname || c.ip_addr || 'Device'
+  quickModal.ip_addr = c.ip_addr || ''
+  quickModal.mac = c.mac || ''
+  quickModal.iface = kind === 'qos' ? 'wan1' : 'lan1'
+  quickModal.upload = 1000
+  quickModal.download = 5000
+  quickModal.enabled = 'yes'
+  quickModal.comment = c.comment || ''
+}
+
+async function submitQuickModal() {
+  quickModal.busy = true
+  quickModal.error = null
+  try {
+    if (quickModal.kind === 'terminal') {
+      await createV4Resource('terminals', { tagname: quickModal.tagname, mac: quickModal.mac, comment: quickModal.comment })
+      showToast(`已标注终端 ${quickModal.tagname}`)
+    } else if (quickModal.kind === 'static') {
+      await createV4Resource('dhcp-static', {
+        tagname: quickModal.tagname,
+        ip_addr: quickModal.ip_addr,
+        mac: quickModal.mac,
+        interface: quickModal.iface,
+        enabled: 'yes',
+        comment: quickModal.comment,
+      })
+      showToast(`已绑定静态 IP ${quickModal.ip_addr}`)
+    } else if (quickModal.kind === 'qos') {
+      await createV4Resource('qos-ip', {
+        tagname: quickModal.tagname,
+        ip_addr: quickModal.ip_addr,
+        interface: quickModal.iface,
+        upload: quickModal.upload,
+        download: quickModal.download,
+        protocol: 'any',
+        enabled: 'yes',
+      })
+      showToast(`已为 ${quickModal.ip_addr} 应用 QoS 限速`)
+    } else if (quickModal.kind === 'mac-block') {
+      await createV4Resource('mac-rules', {
+        tagname: quickModal.tagname,
+        mac: quickModal.mac,
+        enabled: quickModal.enabled,
+        comment: quickModal.comment,
+      })
+      showToast(`已写入 MAC 控制规则 ${quickModal.mac}`)
+    }
+    quickModal.open = false
+  } catch (e: unknown) {
+    quickModal.error = e instanceof Error ? e.message : String(e)
+  } finally {
+    quickModal.busy = false
+  }
+}
+
+function showToast(msg: string) {
+  actionToast.value = msg
+  setTimeout(() => {
+    if (actionToast.value === msg) actionToast.value = null
+  }, 2800)
+}
+
+async function loadClients() {
+  if (!isClientMode.value) return
+  loading.value = true
+  error.value = null
+  try {
+    const res = await fetchV4Clients({ mode: activeTab.value, page: 1, page_size: 200, search: search.value })
+    clients.value = res.items || []
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function reloadAuthOnline() {
+  error.value = null
+  try {
+    const res = await fetchV4Resource('auth-online', { page: 1, page_size: 100 })
+    authRows.value = res.rows || []
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function kickUser(row: Record<string, unknown>) {
+  if (readOnly.value) return
+  const id = String(row.id ?? '')
+  if (!id || !window.confirm(`确认强制下线认证用户 ${String(row.username ?? id)} 吗？`)) return
+  try {
+    await kickV4OnlineUser(id)
+    await reloadAuthOnline()
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function openDetail(client: ClientRecordDTO) {
+  selectedClient.value = client
+  detailLoading.value = true
+  clientDetail.value = null
+  try {
+    clientDetail.value = await fetchV4ClientDetail(client.ip_addr, client.mac)
+    await nextTick()
+    renderDetailChart()
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function closeDetail() {
+  selectedClient.value = null
+  detailChart?.dispose()
+  detailChart = null
+}
+
+function renderDetailChart() {
+  if (!detailChartEl.value || !clientDetail.value) return
+  if (!detailChart) detailChart = echarts.init(detailChartEl.value)
+  const pal = palette.value
+  const list = clientDetail.value.traffic_load || []
+  detailChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis', backgroundColor: pal.tooltipBg, borderColor: pal.tooltipBorder, textStyle: { color: pal.textStrong } },
+    grid: { left: 48, right: 12, top: 18, bottom: 24 },
+    xAxis: {
+      type: 'category',
+      data: list.map((item) => {
+        const ts = Number(item.timestamp ?? 0)
+        if (!ts) return ''
+        const d = new Date(ts * 1000)
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      }),
+      axisLabel: { color: pal.textMuted, fontSize: 10 },
+    },
+    yAxis: { type: 'value', splitLine: { lineStyle: { color: pal.gridLine } }, axisLabel: { color: pal.textMuted, fontSize: 10 } },
+    series: [
+      { name: '下行', type: 'line', smooth: true, showSymbol: false, data: list.map((x) => Number(x.download ?? 0)), itemStyle: { color: pal.downColor } },
+      { name: '上行', type: 'line', smooth: true, showSymbol: false, data: list.map((x) => Number(x.upload ?? 0)), itemStyle: { color: pal.upColor } },
+    ],
+  }, true)
+}
+
+watch(
+  () => [props.initialSubResource, props.navSeq] as const,
+  ([next]) => {
+    if (next && subTabs.some((t) => t.key === next)) activeTab.value = next
+  },
+  { immediate: true }
+)
+
+watch(activeTab, async () => {
+  await nextTick()
+  const activeEl = subtabBarEl.value?.querySelector('.subtab-pill.active') as HTMLElement | null
+  activeEl?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' })
+})
+
+watch([activeTab, routerEpoch], () => {
+  if (isClientMode.value) void loadClients()
+  else if (activeTab.value === 'auth-online') void reloadAuthOnline()
+}, { immediate: true })
+
+let hasMounted = false
+
+function startPolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(() => {
+    if (activeTab.value === 'online' || activeTab.value === 'ipv6-online') {
+      void loadClients()
+    }
+  }, 6000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+onMounted(() => {
+  hasMounted = true
+  startPolling()
+})
+
+onActivated(() => {
+  if (hasMounted && (activeTab.value === 'online' || activeTab.value === 'ipv6-online')) {
+    void loadClients()
+  }
+  startPolling()
+  void nextTick(() => detailChart?.resize())
+})
+
+onDeactivated(() => {
+  stopPolling()
+})
+
+onUnmounted(() => {
+  stopPolling()
+  detailChart?.dispose()
+})
+</script>
+
+<style scoped>
+.terminals-page { display: flex; flex-direction: column; gap: 16px; }
+.ws-head { padding: 18px 20px; }
+.ws-eyebrow { font-size: 11px; font-weight: 700; color: var(--accent-text); letter-spacing: 0.08em; }
+.ws-head h1 { margin: 4px 0 0; font-size: 22px; font-weight: 800; }
+.ws-head p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
+
+.subtab-bar {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 6px;
+  border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); background: var(--surface-input);
+}
+.subtab-pill {
+  min-height: 34px; padding: 0 13px; border-radius: var(--radius-control); border: 1px solid transparent;
+  background: transparent; color: var(--text-normal); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.subtab-pill:hover {
+  color: var(--text-strong);
+  background: var(--surface-hover);
+}
+.subtab-pill.active,
+.subtab-pill.active > * {
+  color: var(--btn-primary-fg);
+}
+.subtab-pill.active {
+  border-color: var(--btn-primary-border);
+  background: var(--btn-primary-bg); box-shadow: var(--btn-primary-shadow);
+}
+
+.clients-card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+.search-box { position: relative; flex: 1; min-width: 220px; max-width: 380px; }
+.search-ic { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+.search-input { padding-left: 32px; }
+.toolbar-right { display: flex; gap: 8px; align-items: center; }
+.sort-select { width: auto; min-width: 150px; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.v4-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.v4-table th { text-align: left; padding: 10px 12px; font-size: 11px; color: var(--text-muted); background: var(--surface-table-head); border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
+.v4-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--text-normal); white-space: nowrap; }
+.v4-table tbody tr:last-child td { border-bottom: none; }
+
+.host-cell { display: flex; flex-direction: column; gap: 2px; }
+.sub-muted { font-size: 11px; color: var(--text-muted); }
+.ic-up { color: var(--chart-up); }
+.ic-down { color: var(--chart-down); }
+.sep { margin: 0 4px; color: var(--text-faint); }
+.client-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.empty-state { padding: 36px 16px; text-align: center; color: var(--text-muted); }
+
+.drawer-backdrop { position: fixed; inset: 0; z-index: 250; background: rgba(6, 10, 20, 0.45); backdrop-filter: blur(8px); display: flex; justify-content: flex-end; }
+.drawer-backdrop.center { align-items: center; justify-content: center; }
+.drawer-panel { width: min(480px, 100vw); height: 100%; border-radius: var(--radius-xl) 0 0 var(--radius-xl); display: flex; flex-direction: column; background: var(--surface-popover); }
+.drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; }
+.drawer-head > div > strong { display: block; font-size: 15px; }
+.drawer-head > div > span { font-size: 11px; color: var(--text-muted); }
+.drawer-body { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+.detail-section h4 { margin: 0 0 10px; font-size: 13px; color: var(--text-strong); }
+.detail-chart { width: 100%; height: 220px; }
+.app-list { display: flex; flex-direction: column; gap: 8px; }
+.app-row { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: var(--surface-input); font-size: 12px; }
+
+.confirm-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; background: var(--surface-popover); display: flex; flex-direction: column; gap: 12px; }
+.modal-top { display: flex; justify-content: space-between; align-items: center; }
+.modal-top h4 { margin: 0; font-size: 15px; }
+.modal-form { display: flex; flex-direction: column; gap: 10px; }
+.field-item { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-normal); }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.spin { animation: spin 0.9s linear infinite; }
+
+@media (max-width: 768px) {
+  .ws-head { padding: 14px; }
+  .ws-head h1 { font-size: 18px; }
+  .subtab-bar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 5px; }
+  .subtab-bar::-webkit-scrollbar { display: none; }
+  .subtab-pill { flex-shrink: 0; white-space: nowrap; min-height: 32px; padding: 0 11px; }
+}
+
+@media (max-width: 640px) {
+  .clients-card { padding: 14px; }
+  .search-box { min-width: 100%; max-width: none; }
+  .toolbar-right { width: 100%; }
+  .sort-select { flex: 1; min-width: 0; }
+  .drawer-backdrop { align-items: flex-end; }
+  .drawer-panel { width: 100%; height: auto; max-height: 88dvh; border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+  .drawer-body { padding: 14px 16px; }
+}
+</style>

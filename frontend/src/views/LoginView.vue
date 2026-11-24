@@ -1,36 +1,61 @@
 <template>
-  <div class="login-root">
-    <div class="login-ambient" aria-hidden="true" />
+  <div class="login-stage">
+    <div class="login-orb orb-1" aria-hidden="true" />
+    <div class="login-orb orb-2" aria-hidden="true" />
 
-    <main class="login-center">
-      <div class="login-card glass-card">
-        <!-- Logo & Brand -->
-        <div class="login-brand">
-          <img src="/ikuai-icon.svg" alt="iKuai Dashboard" class="login-logo" />
+    <main class="login-shell v4-panel">
+      <!-- Showcase / Theme Preview Side -->
+      <section class="brand-pane">
+        <div class="brand-top">
+          <div class="logo-ring">
+            <img src="/ikuai-icon.svg" alt="iKuai V4" class="logo-img" />
+          </div>
           <div>
-            <h1 class="login-title">iKuai Dashboard</h1>
-            <p class="login-subtitle">爱快实时监控</p>
+            <span class="eyebrow font-mono">IKUAI OS V4.0 CONSOLE</span>
+            <h1>爱快 V4 多节点控制台</h1>
           </div>
         </div>
 
-        <div class="login-divider" />
+        <p class="lead">
+          纯原生 `/api/v4.0` + Bearer Token 全能运维面板，支持多路由器秒级切换、全模块增删改查、Dry-Run 变更预览与只读保护锁。
+        </p>
 
-        <!-- Form -->
+        <div class="feature-chips">
+          <span class="v4-badge v4-badge-accent">苹果液态玻璃 & 6 套主题</span>
+          <span class="v4-badge v4-badge-up">全模块可写管理</span>
+          <span class="v4-badge" :class="serverReadOnly ? 'v4-badge-warn' : ''">
+            {{ serverReadOnly ? '服务端只读保护已开启' : '支持只读模式 / Dry-Run' }}
+          </span>
+        </div>
+
+        <div class="theme-showcase">
+          <span class="showcase-label">即时切换登录视觉主题</span>
+          <ThemePicker />
+        </div>
+      </section>
+
+      <!-- Credentials Form Side -->
+      <section class="form-pane v4-card">
+        <div class="form-head">
+          <h2>管理员登录</h2>
+          <span class="font-mono sub-hint">Session Token · HMAC-SHA256</span>
+        </div>
+
+        <div v-if="error" class="error-banner" role="alert">
+          <LockKeyholeOpen :size="15" />
+          <span>{{ error }}</span>
+        </div>
+
         <form class="login-form" novalidate @submit.prevent="handleLogin">
-          <div v-if="error" class="login-error" role="alert">
-            <LockKeyholeOpen :size="15" />
-            <span>{{ error }}</span>
-          </div>
-
-          <label class="login-field">
-            <span class="login-label-text">用户名</span>
-            <div class="login-input-wrap">
-              <User :size="15" class="login-input-icon" />
+          <label class="field-group">
+            <span>用户名</span>
+            <div class="input-icon-wrap">
+              <User :size="15" class="lead-ic" />
               <input
                 id="login-username"
                 v-model.trim="username"
                 type="text"
-                class="login-input"
+                class="v4-input with-icon"
                 placeholder="admin"
                 autocomplete="username"
                 autofocus
@@ -39,22 +64,22 @@
             </div>
           </label>
 
-          <label class="login-field">
-            <span class="login-label-text">密码</span>
-            <div class="login-input-wrap">
-              <KeyRound :size="15" class="login-input-icon" />
+          <label class="field-group">
+            <span>密码</span>
+            <div class="input-icon-wrap">
+              <KeyRound :size="15" class="lead-ic" />
               <input
                 id="login-password"
                 v-model="password"
                 :type="showPwd ? 'text' : 'password'"
-                class="login-input"
-                placeholder="••••••••"
+                class="v4-input with-icon with-eye"
+                placeholder="请输入登录密码"
                 autocomplete="current-password"
                 :disabled="loading"
               />
               <button
                 type="button"
-                class="login-eye-btn"
+                class="eye-btn"
                 :title="showPwd ? '隐藏密码' : '显示密码'"
                 tabindex="-1"
                 @click="showPwd = !showPwd"
@@ -67,27 +92,30 @@
 
           <button
             type="submit"
-            class="login-submit"
+            class="v4-btn v4-btn-primary submit-btn"
             :disabled="loading || !username || !password"
           >
-            <span v-if="loading" class="login-spinner" />
-            <LogIn v-else :size="16" />
-            <span>{{ loading ? '登录中...' : '登录' }}</span>
+            <LogIn :size="16" />
+            <span>{{ loading ? '验证中...' : '登录进入 V4 控制台' }}</span>
           </button>
         </form>
 
-        <p class="login-hint">默认凭据：<code>admin</code> / <code>admin</code></p>
-      </div>
+        <div class="form-foot">
+          <span>默认开发凭据：<code class="font-mono">admin</code> / <code class="font-mono">admin</code></span>
+          <button type="button" class="link-fill" @click="fillDefault">一键填入</button>
+        </div>
+      </section>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Eye, EyeOff, KeyRound, LogIn, LockKeyholeOpen, User } from 'lucide-vue-next'
+import { Eye, EyeOff, KeyRound, LockKeyholeOpen, LogIn, User } from 'lucide-vue-next'
+import ThemePicker from '@/components/layout/ThemePicker.vue'
 import { useAuth } from '@/composables/useAuth'
 
-const { login } = useAuth()
+const { login, serverReadOnly } = useAuth()
 
 const username = ref('')
 const password = ref('')
@@ -95,13 +123,18 @@ const showPwd = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+function fillDefault() {
+  username.value = 'admin'
+  password.value = 'admin'
+  error.value = null
+}
+
 async function handleLogin() {
   if (!username.value || !password.value) return
   loading.value = true
   error.value = null
   try {
     await login(username.value, password.value)
-    // 登录成功，App.vue 会响应 isAuthenticated 变化自动切换视图
   } catch (e: unknown) {
     if (e && typeof e === 'object' && 'response' in e) {
       const resp = (e as { response?: { data?: { message?: string } } }).response
@@ -117,253 +150,259 @@ async function handleLogin() {
 </script>
 
 <style scoped>
-.login-root {
-  position: fixed;
-  inset: 0;
+.login-stage {
+  position: relative;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  padding: 24px;
+  overflow: hidden;
 }
 
-.login-ambient {
+.login-orb {
   position: fixed;
-  inset: 0;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.42;
+  pointer-events: none;
   z-index: -1;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(94, 203, 255, 0.22) 0%, transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(98, 244, 173, 0.16) 0%, transparent 36%),
-    radial-gradient(circle at 50% 50%, rgba(209, 154, 255, 0.10) 0%, transparent 48%),
-    var(--app-bg);
 }
 
-.login-center {
+.orb-1 {
+  width: 420px;
+  height: 420px;
+  top: -80px;
+  left: -60px;
+  background: var(--accent-primary-soft);
+}
+
+.orb-2 {
+  width: 380px;
+  height: 380px;
+  bottom: -80px;
+  right: -60px;
+  background: var(--accent-secondary-soft);
+}
+
+.login-shell {
   width: 100%;
-  max-width: 400px;
-  padding: 16px;
+  max-width: 960px;
+  padding: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 24px;
+  align-items: stretch;
 }
 
-.login-card {
-  padding: 36px 32px 28px;
+.brand-pane {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  animation: login-card-in 0.48s cubic-bezier(0.16, 1, 0.3, 1) both;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 6px;
 }
 
-@keyframes login-card-in {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.login-brand {
+.brand-top {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 24px;
 }
 
-.login-logo {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 auto;
-  filter: drop-shadow(0 0 12px rgba(94, 203, 255, 0.42));
+.logo-ring {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-input);
+  box-shadow: var(--inner-sheen);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.login-title {
+.logo-img {
+  width: 36px;
+  height: 36px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-text);
+  letter-spacing: 0.08em;
+}
+
+.brand-top h1 {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.lead {
   margin: 0;
-  font-size: 20px;
-  font-weight: 780;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-normal);
 }
 
-.login-subtitle {
-  margin: 3px 0 0;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  font-weight: 600;
+.feature-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.login-divider {
-  height: 1px;
-  background: var(--glass-border);
-  margin-bottom: 24px;
+.theme-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
 }
 
-.login-form {
+.showcase-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.form-pane {
+  padding: 28px 26px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.login-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border: 1px solid var(--system-red-dim);
-  border-radius: 10px;
-  background: var(--system-red-dim);
-  color: var(--system-red);
-  font-size: 13px;
-  font-weight: 600;
-  animation: shake 0.36s ease;
+.form-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text-strong);
 }
 
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-6px); }
-  40% { transform: translateX(6px); }
-  60% { transform: translateX(-4px); }
-  80% { transform: translateX(4px); }
+.sub-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
-.login-field {
+.login-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 }
 
-.login-label-text {
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   font-size: 12px;
-  font-weight: 760;
-  color: var(--text-tertiary);
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  color: var(--text-normal);
 }
 
-.login-input-wrap {
+.input-icon-wrap {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.login-input-icon {
+.lead-ic {
   position: absolute;
   left: 13px;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   pointer-events: none;
-  flex-shrink: 0;
 }
 
-.login-input {
-  width: 100%;
-  height: 44px;
-  padding: 0 40px 0 38px;
-  color: var(--text-primary);
-  background: var(--control-bg);
-  border: 1px solid var(--control-border);
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 500;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+.with-icon {
+  padding-left: 38px;
+  min-height: 42px;
 }
 
-.login-input:focus {
-  outline: none;
-  border-color: var(--system-blue);
-  background: color-mix(in srgb, var(--control-bg) 80%, var(--system-blue-dim));
-  box-shadow: 0 0 0 3px var(--system-blue-dim);
+.with-eye {
+  padding-right: 38px;
 }
 
-.login-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.login-eye-btn {
+.eye-btn {
   position: absolute;
   right: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
   border: none;
-  border-radius: 8px;
   background: transparent;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   cursor: pointer;
-  transition: color 0.16s ease, background 0.16s ease;
+  padding: 4px;
 }
 
-.login-eye-btn:hover {
-  color: var(--text-secondary);
-  background: var(--control-bg);
+.submit-btn {
+  min-height: 44px;
+  font-size: 14px;
+  margin-top: 4px;
 }
 
-.login-submit {
+.form-foot {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 8px;
-  height: 46px;
-  margin-top: 4px;
-  padding: 0 24px;
-  border: 1px solid color-mix(in srgb, var(--system-blue) 58%, var(--control-border));
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--control-active) 0%, rgba(94, 203, 255, 0.16) 100%);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 760;
-  cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
-}
-
-.login-submit:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: var(--system-blue);
-  box-shadow: 0 4px 24px var(--system-blue-dim);
-}
-
-.login-submit:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.login-submit:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.login-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--control-border);
-  border-top-color: var(--system-blue);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.login-hint {
-  margin-top: 20px;
-  text-align: center;
   font-size: 12px;
   color: var(--text-muted);
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
 }
 
-.login-hint code {
+.form-foot code {
   padding: 2px 6px;
   border-radius: 6px;
-  background: var(--control-bg);
-  border: 1px solid var(--control-border);
-  font-family: 'SF Mono', ui-monospace, monospace;
-  font-size: 11px;
-  color: var(--text-tertiary);
+  background: var(--surface-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-strong);
 }
 
-@media (max-width: 480px) {
-  .login-card {
-    padding: 28px 22px 22px;
+.link-fill {
+  border: none;
+  background: transparent;
+  color: var(--accent-text);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.link-fill:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 820px) {
+  .login-shell {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-stage {
+    padding: 12px;
+    align-items: flex-start;
+    padding-top: max(18px, env(safe-area-inset-top));
+  }
+
+  .login-shell {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .form-pane {
+    padding: 18px 15px;
+  }
+
+  .brand-top h1 {
+    font-size: 20px;
+  }
+
+  .form-foot {
+    flex-wrap: wrap;
   }
 }
 </style>

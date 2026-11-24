@@ -4,20 +4,23 @@ import (
 	"errors"
 	"net/http"
 
+	"ikuai-dashboard/backend/internal/config"
+	"ikuai-dashboard/backend/internal/fleet"
+	"ikuai-dashboard/backend/internal/ikuaiv4"
 	"ikuai-dashboard/backend/internal/logger"
-	"ikuai-dashboard/backend/internal/service"
+	"ikuai-dashboard/backend/internal/v4service"
 
 	"github.com/gin-gonic/gin"
 )
 
-// CORSMiddleware 处理跨域请求（前后端分离必需）
+// CORSMiddleware 处理跨域请求。
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Router-ID")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 
-		if c.Request.Method == "OPTIONS" {
+		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
@@ -25,35 +28,110 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
-// GetInterfaceDataHandler GET /api/v1/monitor/interface
-// 返回首页看板所需数据：汇总卡片 + WAN 状态 + 接口流量明细
-func GetInterfaceDataHandler(c *gin.Context) {
-	data, err := service.CurrentMonitorService().GetInterfaceData(c.Request.Context())
-	if err != nil {
-		if errors.Is(err, service.ErrUnconfigured) {
-			c.JSON(http.StatusConflict, gin.H{"code": 409, "message": err.Error()})
-			return
+func resolveRouterForRequest(c *gin.Context) (config.RouterConfig, *ikuaiv4.Client, error) {
+	overrideID := c.Query("router_id")
+	if overrideID == "" {
+		overrideID = c.GetHeader("X-Router-ID")
+	}
+	return fleet.GlobalManager.ResolveRouter(overrideID)
+}
+
+func respondV4Error(c *gin.Context, tag string, err error) {
+	if errors.Is(err, fleet.ErrUnconfigured) {
+		c.JSON(http.StatusConflict, gin.H{"code": 409, "message": err.Error()})
+		return
+	}
+	if errors.Is(err, fleet.ErrRouterNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": err.Error()})
+		return
+	}
+	var apiErr *ikuaiv4.APIError
+	if errors.As(err, &apiErr) {
+		status := http.StatusBadGateway
+		if apiErr.HTTPStatus == http.StatusUnauthorized || apiErr.Code == 3007 || apiErr.Code == 1008 {
+			status = http.StatusBadGateway
+		} else if apiErr.Code == 3001 {
+			status = http.StatusBadRequest
 		}
-		logger.Log.Errorf("[interface] 获取失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		logger.Log.Warnf("[%s] 上游 v4 接口返回错误: %v", tag, err)
+		c.JSON(status, gin.H{"code": status, "message": err.Error(), "upstream_code": apiErr.Code})
+		return
+	}
+	logger.Log.Errorf("[%s] 请求失败: %v", tag, err)
+	c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+}
+
+// GetInterfaceDataHandler GET /api/v1/monitor/interface
+func GetInterfaceDataHandler(c *gin.Context) {
+	router, client, err := resolveRouterForRequest(c)
+	if err != nil {
+		respondV4Error(c, "interface", err)
+		return
+	}
+	ov, err := v4service.GetOverview(c.Request.Context(), router, client)
+	if err != nil {
+		respondV4Error(c, "interface", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": v4service.ToLegacyInterfaceData(ov)})
+}
+
+// GetLanClientsHandler GET /api/v1/monitor/lan?search=
+func GetLanClientsHandler(c *gin.Context) {
+	router, client, err := resolveRouterForRequest(c)
+	if err != nil {
+		respondV4Error(c, "lan", err)
+		return
+	}
+	clients, err := v4service.GetMergedLanClients(c.Request.Context(), router, client, c.Query("search"))
+	if err != nil {
+		respondV4Error(c, "lan", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": clients})
+}
+
+// GetNetworkMapHandler GET /api/v1/monitor/network-map
+func GetNetworkMapHandler(c *gin.Context) {
+	router, client, err := resolveRouterForRequest(c)
+	if err != nil {
+		respondV4Error(c, "network-map", err)
+		return
+	}
+	data, err := v4service.GetNetworkMap(c.Request.Context(), router, client)
+	if err != nil {
+		respondV4Error(c, "network-map", err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data})
 }
 
-// GetLanClientsHandler GET /api/v1/monitor/lan?search=关键词
-// 返回按 MAC 聚合去重的局域网客户端列表，支持按备注 / hostname 搜索
-func GetLanClientsHandler(c *gin.Context) {
-	search := c.Query("search")
-	clients, err := service.CurrentMonitorService().GetLanClients(c.Request.Context(), search)
+// GetSecurityHubHandler GET /api/v1/monitor/security-hub
+func GetSecurityHubHandler(c *gin.Context) {
+	router, client, err := resolveRouterForRequest(c)
 	if err != nil {
-		if errors.Is(err, service.ErrUnconfigured) {
-			c.JSON(http.StatusConflict, gin.H{"code": 409, "message": err.Error()})
-			return
-		}
-		logger.Log.Errorf("[lan] 获取失败: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "message": err.Error()})
+		respondV4Error(c, "security-hub", err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"code": 200, "data": clients})
+	data, err := v4service.GetSecurityHub(c.Request.Context(), router, client)
+	if err != nil {
+		respondV4Error(c, "security-hub", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data})
+}
+
+// GetMultiWanHandler GET /api/v1/monitor/multi-wan
+func GetMultiWanHandler(c *gin.Context) {
+	router, client, err := resolveRouterForRequest(c)
+	if err != nil {
+		respondV4Error(c, "multi-wan", err)
+		return
+	}
+	data, err := v4service.GetMultiWan(c.Request.Context(), router, client)
+	if err != nil {
+		respondV4Error(c, "multi-wan", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data})
 }

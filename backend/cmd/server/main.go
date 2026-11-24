@@ -10,8 +10,8 @@ import (
 
 	"ikuai-dashboard/backend/internal/config"
 	"ikuai-dashboard/backend/internal/controller"
+	"ikuai-dashboard/backend/internal/fleet"
 	"ikuai-dashboard/backend/internal/logger"
-	"ikuai-dashboard/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,77 +20,99 @@ func main() {
 	configPath := flag.String("config", "", "YAML 配置文件路径")
 	flag.Parse()
 
-	// 1. 初始化 Zap 高性能结构化日志
 	logger.InitLogger()
 	logger.Log.Info("══════════════════════════════════════")
-	logger.Log.Info("  iKuai 流量监控系统 · 后端服务启动中")
+	logger.Log.Info("  iKuai Console V4 · 后端服务启动中")
 	logger.Log.Info("══════════════════════════════════════")
 
-	// 2. 加载全局配置
 	if err := config.InitConfig(*configPath); err != nil {
 		logger.Log.Fatalf("加载配置失败: %v", err)
 	}
 	activeRouter, ok := config.GlobalConfig.ActiveRouter()
 	if ok {
-		logger.Log.Infof("配置: %s | 端口: %s | 当前爱快: %s | Mock: %v",
-			config.GlobalPath, config.GlobalConfig.Server.Port, activeRouter.Name, activeRouter.Mock)
+		logger.Log.Infof("配置: %s | 端口: %s | 当前爱快 V4: %s (%s) | Mock: %v",
+			config.GlobalPath, config.GlobalConfig.Server.Port, activeRouter.Name, activeRouter.Source, activeRouter.Mock)
 	} else {
-		logger.Log.Infof("配置: %s | 端口: %s | 当前爱快: 未配置",
+		logger.Log.Infof("配置: %s | 端口: %s | 当前爱快 V4: 未配置",
 			config.GlobalPath, config.GlobalConfig.Server.Port)
 	}
 
-	// 3. 初始化爱快连接 / Mock 数据源
-	service.InitMonitorService()
-
-	// 4. 初始化 Gin 路由引擎
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(controller.CORSMiddleware())
 
-	// 5. 注册 API 路由
-	// 公开端点：不受 Token 保护（供前端查询是否需要认证）
+	// Public status & auth endpoints
 	r.GET("/api/v1/config/token", controller.GetTokenStatusHandler)
-	// 登录相关公开端点
 	r.GET("/api/v1/auth/status", controller.GetAuthStatusHandler)
 	r.POST("/api/v1/auth/login", controller.LoginHandler)
 	r.POST("/api/v1/auth/logout", controller.LogoutHandler)
 
-	// 受 Token 保护的路由组
-	api := r.Group("/api/v1", controller.TokenAuthMiddleware())
+	// Protected API endpoints
+	api := r.Group("/api/v1", controller.TokenAuthMiddleware(), controller.ReadOnlyMiddleware())
 	{
+		// Multi-router V4 fleet management
+		api.GET("/routers", controller.GetRoutersConfigHandler)
+		api.GET("/routers/probe", controller.ProbeRoutersHandler)
+		api.POST("/routers/test", controller.TestRouterHandler)
+		api.PUT("/routers", controller.SaveRoutersConfigHandler)
+		api.PUT("/routers/active", controller.SwitchActiveRouterHandler)
+
+		// Config compatibility aliases
+		api.GET("/config/routers", controller.GetRoutersConfigHandler)
+		api.PUT("/config/routers", controller.SaveRoutersConfigHandler)
+		api.PUT("/config/active-router", controller.SwitchActiveRouterHandler)
+		api.PUT("/config/token", controller.SaveTokenHandler)
+
+		// Pure V4 Monitoring, Clients, Analytics & CLI Resource Catalog
+		v4 := api.Group("/v4")
+		{
+			v4.GET("/overview", controller.GetV4OverviewHandler)
+			v4.GET("/monitor/load", controller.GetV4LoadHistoryHandler)
+			v4.GET("/clients", controller.GetV4ClientsHandler)
+			v4.GET("/clients/detail", controller.GetV4ClientDetailHandler)
+			v4.DELETE("/users/online/:id", controller.KickV4OnlineUserHandler)
+			v4.GET("/traffic/analytics", controller.GetV4AnalyticsHandler)
+
+			v4.GET("/catalog", controller.GetV4CatalogHandler)
+			v4.GET("/resources/:key", controller.ListV4ResourceHandler)
+			v4.POST("/resources/:key", controller.CreateV4ResourceHandler)
+			v4.PUT("/resources/:key", controller.UpdateV4ResourceHandler)
+			v4.PUT("/resources/:key/:id", controller.UpdateV4ResourceHandler)
+			v4.PATCH("/resources/:key/:id/toggle", controller.ToggleV4ResourceHandler)
+			v4.DELETE("/resources/:key", controller.DeleteV4ResourceHandler)
+			v4.DELETE("/resources/:key/:id", controller.DeleteV4ResourceHandler)
+			v4.POST("/actions/:action", controller.ExecuteV4ActionHandler)
+			v4.GET("/objects/:key/refs", controller.GetObjectRefsHandler)
+			v4.GET("/wireguard/keypair", controller.GenerateWGKeypairHandler)
+			v4.GET("/wireguard/:id/peers", controller.ListWGPeersHandler)
+			v4.POST("/wireguard/:id/peers", controller.CreateWGPeerHandler)
+			v4.PUT("/wireguard/:id/peers/:peer_id", controller.UpdateWGPeerHandler)
+			v4.PATCH("/wireguard/:id/peers/:peer_id/toggle", controller.ToggleWGPeerHandler)
+			v4.DELETE("/wireguard/:id/peers/:peer_id", controller.DeleteWGPeerHandler)
+		}
+
+		// Preserved monitor endpoints
 		api.GET("/monitor/interface", controller.GetInterfaceDataHandler)
 		api.GET("/monitor/lan", controller.GetLanClientsHandler)
 		api.GET("/monitor/network-map", controller.GetNetworkMapHandler)
 		api.GET("/monitor/security-hub", controller.GetSecurityHubHandler)
 		api.GET("/monitor/multi-wan", controller.GetMultiWanHandler)
-		api.GET("/monitor/insights", controller.GetMonitorInsightsHandler)
-		api.GET("/ip", controller.GetWanIPHandler)
-		api.GET("/router/resources", controller.ListCommonResourcesHandler)
-		api.GET("/router/resources/:name", controller.GetCommonResourceHandler)
-		api.POST("/router/resources/:name", controller.CreateCommonResourceHandler)
-		api.PUT("/router/resources/:name/:id", controller.UpdateCommonResourceHandler)
-		api.DELETE("/router/resources/:name/:id", controller.DeleteCommonResourceHandler)
-		api.GET("/config/routers", controller.GetRoutersConfigHandler)
-		api.PUT("/config/active-router", controller.SwitchActiveRouterHandler)
-		api.PUT("/config/routers", controller.SaveRoutersConfigHandler)
-		api.PUT("/config/token", controller.SaveTokenHandler)
 	}
 
-	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "ok",
+			"version": "v4",
 			"config":  config.GlobalPath,
-			"service": service.CurrentMonitorService().Status(),
+			"service": fleet.GlobalManager.Status(),
 		})
 	})
 
 	registerStaticRoutes(r, config.GlobalConfig.Server.StaticDir)
 
-	// 6. 启动监听
 	addr := fmt.Sprintf(":%s", config.GlobalConfig.Server.Port)
-	logger.Log.Infof("服务就绪 → http://localhost%s", addr)
+	logger.Log.Infof("V4 控制台服务就绪 → http://localhost%s", addr)
 	if err := r.Run(addr); err != nil {
 		logger.Log.Fatalf("服务启动失败: %v", err)
 	}

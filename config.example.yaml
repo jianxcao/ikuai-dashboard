@@ -1,7 +1,21 @@
 server:
   port: "8080"
   static_dir: "frontend/dist"
+  # read_only: false    # 设为 true 或通过环境变量 READ_ONLY=true 开启服务端只读保护（允许 Dry-Run）
+  # username: "admin"   # 登录用户名（可被环境变量 USER_NAME 覆盖；设 DISABLE_AUTH=true 可免登录）
+  # password: ""        # 登录密码（可被环境变量 PASSWORD 覆盖；未设时默认 admin/admin）
 
 active_router_id: ""
 
 routers: []
+# 示例（纯 V4 Token 模式）：
+# active_router_id: "hq-v4"
+# routers:
+#   - id: "hq-v4"
+#     name: "核心网关 V4"
+#     url: "https://192.168.9.1"
+#     token: ""
+#     tags: ["主路由", "双线"]
+#     note: "在爱快 V4 后台：高级设置 -> 系统设置 -> API Token 创建令牌"
+#     mock: true
+#     insecure_skip_verify: true

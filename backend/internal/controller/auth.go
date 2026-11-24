@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"ikuai-dashboard/backend/internal/auth"
+	"ikuai-dashboard/backend/internal/config"
 	"ikuai-dashboard/backend/internal/logger"
 
 	"github.com/gin-gonic/gin"
@@ -21,15 +22,19 @@ type loginResponse struct {
 
 type authStatusResponse struct {
 	AuthEnabled bool `json:"auth_enabled"`
+	ReadOnly    bool `json:"read_only"`
 }
 
 // GetAuthStatusHandler GET /api/v1/auth/status
-// 返回是否启用了登录认证，前端据此决定是否显示登录页。
+// 返回是否启用了登录认证及服务端只读模式，前端据此决定是否显示登录页和写保护状态。
 // 此端点始终公开，不受任何中间件保护。
 func GetAuthStatusHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code": 200,
-		"data": authStatusResponse{AuthEnabled: auth.IsAuthEnabled()},
+		"data": authStatusResponse{
+			AuthEnabled: auth.IsAuthEnabled(),
+			ReadOnly:    config.IsReadOnly(),
+		},
 	})
 }
 
