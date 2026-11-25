@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sync"
 	"testing"
 
 	"ikuai-dashboard/backend/internal/config"
@@ -62,5 +63,51 @@ func TestGetOverviewParsesRealFirmwarePayload(t *testing.T) {
 	legacy := ToLegacyInterfaceData(ov)
 	if legacy.Summary.UploadSpeed != 1024 || legacy.Summary.DownloadSpeed != 2048 || len(legacy.WanStatus) != 1 {
 		t.Fatalf("unexpected legacy interface mapping: %+v", legacy)
+	}
+}
+
+func TestGetOverviewCachesPhysicalAndTrafficBriefly(t *testing.T) {
+	var mu sync.Mutex
+	counts := map[string]int{}
+
+	client := ikuaiv4.NewClientWithHTTP("https://192.0.2.2", "tok", &http.Client{
+		Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+			mu.Lock()
+			counts[r.URL.Path]++
+			mu.Unlock()
+			switch r.URL.Path {
+			case "/api/v4.0/monitoring/system":
+				return okJSON(`{"code":0,"message":"Success","results":{"sysinfo":{"cpu":["1.00%"],"memory":{"total":1000,"used":"50%"},"stream":{"upload":10,"download":20},"online_user":{"count":1}}}}`), nil
+			case "/api/v4.0/monitoring/interfaces-status":
+				return okJSON(`{"code":0,"message":"Success","results":{"iface_check":[],"iface_stream":[]}}`), nil
+			case "/api/v4.0/monitoring/interfaces-traffic":
+				return okJSON(`{"code":0,"message":"Success","results":{"wans_stat_history":[{"timestamp":1795490700,"interface":"wan1","avg_upload":"1","avg_download":"2","avg_rtt":5}]}}`), nil
+			case "/api/v4.0/interfaces/physical":
+				return okJSON(`{"code":0,"message":"Success","results":{"ether_info":{"eth0":{"link":1,"speed":1000}}}}`), nil
+			default:
+				return okJSON(`{"code":0,"message":"Success","results":{"data":[]}}`), nil
+			}
+		}),
+	})
+
+	router := config.RouterConfig{ID: "cache-test", Name: "Cache Test", URL: "https://192.0.2.2", Token: "tok"}
+	if _, err := GetOverview(context.Background(), router, client); err != nil {
+		t.Fatalf("first GetOverview failed: %v", err)
+	}
+	if _, err := GetOverview(context.Background(), router, client); err != nil {
+		t.Fatalf("second GetOverview failed: %v", err)
+	}
+
+	if counts["/api/v4.0/monitoring/system"] != 2 {
+		t.Fatalf("expected 2 live /monitoring/system calls, got %d", counts["/api/v4.0/monitoring/system"])
+	}
+	if counts["/api/v4.0/monitoring/interfaces-status"] != 2 {
+		t.Fatalf("expected 2 live /monitoring/interfaces-status calls, got %d", counts["/api/v4.0/monitoring/interfaces-status"])
+	}
+	if counts["/api/v4.0/monitoring/interfaces-traffic"] != 1 {
+		t.Fatalf("expected /monitoring/interfaces-traffic to be cached once, got %d", counts["/api/v4.0/monitoring/interfaces-traffic"])
+	}
+	if counts["/api/v4.0/interfaces/physical"] != 1 {
+		t.Fatalf("expected /interfaces/physical to be cached once, got %d", counts["/api/v4.0/interfaces/physical"])
 	}
 }

@@ -180,6 +180,67 @@ type LegacyInterfaceDataResult struct {
 	TrafficDetails []LegacyTrafficDetail `json:"traffic_details"`
 }
 
+const (
+	overviewTrafficCacheTTL = 15 * time.Second
+	overviewPhysicalTTL     = 30 * time.Second
+)
+
+type overviewClientCache struct {
+	trafficRaw json.RawMessage
+	trafficAt  time.Time
+	phyRaw     json.RawMessage
+	phyAt      time.Time
+}
+
+var (
+	overviewCacheMu sync.Mutex
+	overviewCache   = make(map[*ikuaiv4.Client]*overviewClientCache)
+)
+
+func getOverviewCachedRaw(client *ikuaiv4.Client) (trafficRaw json.RawMessage, hasTraffic bool, phyRaw json.RawMessage, hasPhy bool) {
+	overviewCacheMu.Lock()
+	defer overviewCacheMu.Unlock()
+	entry, ok := overviewCache[client]
+	if !ok {
+		return nil, false, nil, false
+	}
+	now := time.Now()
+	if len(entry.trafficRaw) > 0 && now.Sub(entry.trafficAt) < overviewTrafficCacheTTL {
+		trafficRaw = entry.trafficRaw
+		hasTraffic = true
+	}
+	if len(entry.phyRaw) > 0 && now.Sub(entry.phyAt) < overviewPhysicalTTL {
+		phyRaw = entry.phyRaw
+		hasPhy = true
+	}
+	return trafficRaw, hasTraffic, phyRaw, hasPhy
+}
+
+func setOverviewCachedRaw(client *ikuaiv4.Client, trafficRaw json.RawMessage, updateTraffic bool, phyRaw json.RawMessage, updatePhy bool) {
+	if !updateTraffic && !updatePhy {
+		return
+	}
+	overviewCacheMu.Lock()
+	defer overviewCacheMu.Unlock()
+	if len(overviewCache) > 32 {
+		overviewCache = make(map[*ikuaiv4.Client]*overviewClientCache)
+	}
+	entry, ok := overviewCache[client]
+	if !ok {
+		entry = &overviewClientCache{}
+		overviewCache[client] = entry
+	}
+	now := time.Now()
+	if updateTraffic && len(trafficRaw) > 0 {
+		entry.trafficRaw = trafficRaw
+		entry.trafficAt = now
+	}
+	if updatePhy && len(phyRaw) > 0 {
+		entry.phyRaw = phyRaw
+		entry.phyAt = now
+	}
+}
+
 // GetOverview collects /monitoring/system, /monitoring/interfaces-status, /monitoring/interfaces-traffic and /interfaces/physical.
 func GetOverview(ctx context.Context, router config.RouterConfig, client *ikuaiv4.Client) (*OverviewDTO, error) {
 	if router.Mock || client == nil {
@@ -199,19 +260,21 @@ func GetOverview(ctx context.Context, router config.RouterConfig, client *ikuaiv
 		CollectedAt:      time.Now().Unix(),
 	}
 
-	// Fetch core overview endpoints concurrently to minimize cross-WAN latency.
+	cachedTraffic, hasTrafficCache, cachedPhy, hasPhyCache := getOverviewCachedRaw(client)
+
+	// Fetch live overview endpoints concurrently; reuse recent traffic history & physical NIC snapshots.
 	var (
 		sysRaw     json.RawMessage
 		sysErr     error
 		statusRaw  json.RawMessage
 		statusErr  error
-		trafficRaw json.RawMessage
+		trafficRaw = cachedTraffic
 		trafficErr error
-		phyRaw     json.RawMessage
+		phyRaw     = cachedPhy
 		phyErr     error
 		wg         sync.WaitGroup
 	)
-	wg.Add(4)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		sysRaw, sysErr = client.Get(ctx, "/monitoring/system", nil)
@@ -220,15 +283,27 @@ func GetOverview(ctx context.Context, router config.RouterConfig, client *ikuaiv
 		defer wg.Done()
 		statusRaw, statusErr = client.Get(ctx, "/monitoring/interfaces-status", nil)
 	}()
-	go func() {
-		defer wg.Done()
-		trafficRaw, trafficErr = client.Get(ctx, "/monitoring/interfaces-traffic", nil)
-	}()
-	go func() {
-		defer wg.Done()
-		phyRaw, phyErr = client.Get(ctx, "/interfaces/physical", nil)
-	}()
+	if !hasTrafficCache {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			trafficRaw, trafficErr = client.Get(ctx, "/monitoring/interfaces-traffic", nil)
+		}()
+	}
+	if !hasPhyCache {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			phyRaw, phyErr = client.Get(ctx, "/interfaces/physical", nil)
+		}()
+	}
 	wg.Wait()
+
+	setOverviewCachedRaw(
+		client,
+		trafficRaw, !hasTrafficCache && trafficErr == nil && len(trafficRaw) > 0,
+		phyRaw, !hasPhyCache && phyErr == nil && len(phyRaw) > 0,
+	)
 
 	// 1. /monitoring/system (required baseline)
 	if sysErr != nil {

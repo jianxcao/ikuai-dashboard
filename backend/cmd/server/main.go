@@ -118,6 +118,17 @@ func main() {
 	}
 }
 
+func setStaticCacheHeaders(c *gin.Context, requestPath string) {
+	normalized := filepath.ToSlash(requestPath)
+	if strings.HasPrefix(normalized, "assets/") {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+	c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+}
+
 func registerStaticRoutes(r *gin.Engine, staticDir string) {
 	indexPath := filepath.Join(staticDir, "index.html")
 	staticRoot, _ := filepath.Abs(staticDir)
@@ -137,12 +148,14 @@ func registerStaticRoutes(r *gin.Engine, staticDir string) {
 			absFilePath, _ := filepath.Abs(filePath)
 			if rel, err := filepath.Rel(staticRoot, absFilePath); err == nil && !strings.HasPrefix(rel, "..") {
 				if stat, err := os.Stat(filePath); err == nil && !stat.IsDir() {
+					setStaticCacheHeaders(c, rel)
 					c.File(filePath)
 					return
 				}
 			}
 		}
 		if _, err := os.Stat(indexPath); err == nil {
+			setStaticCacheHeaders(c, "index.html")
 			c.File(indexPath)
 			return
 		}
