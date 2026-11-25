@@ -5,6 +5,20 @@
         <div class="title-row">
           <h3>{{ spec?.label || resourceKey }}</h3>
           <span v-if="spec" class="v4-badge font-mono">{{ spec.v4_path }}</span>
+          <span
+            v-if="isUpstreamReadOnly"
+            class="v4-badge"
+            title="爱快 V4.0 OpenAPI 与 ikuai-cli 当前未开放此资源的写接口"
+          >
+            V4 接口只读
+          </span>
+          <span
+            v-else-if="spec && !canUpdate && hasActions"
+            class="v4-badge"
+            title="配置字段为只读，可执行顶部服务动作"
+          >
+            配置只读 · 支持动作
+          </span>
           <span v-if="readOnly" class="v4-badge v4-badge-warn">只读锁定</span>
         </div>
         <p v-if="spec?.description" class="desc">{{ spec.description }}</p>
@@ -52,12 +66,14 @@
 
     <template v-else-if="!loadFailed">
       <div v-if="canUpdate" class="mode-bar">
-        <button type="button" class="v4-btn btn-xs" :class="{ 'v4-btn-primary': !rawJsonMode }" @click="rawJsonMode = false">
-          可视化表单
-        </button>
-        <button type="button" class="v4-btn btn-xs" :class="{ 'v4-btn-primary': rawJsonMode }" @click="enterRawMode">
-          全字段 JSON 视图
-        </button>
+        <div class="v4-seg-bar" role="tablist">
+          <button type="button" class="v4-seg-btn" :class="{ active: !rawJsonMode }" @click="exitRawMode">
+            可视化表单
+          </button>
+          <button type="button" class="v4-seg-btn" :class="{ active: rawJsonMode }" @click="enterRawMode">
+            全字段 JSON 视图
+          </button>
+        </div>
       </div>
 
       <template v-if="rawJsonMode">
@@ -133,7 +149,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Check, Eye, RefreshCw, Save, Terminal, Zap } from 'lucide-vue-next'
-import { executeV4Action, fetchV4Resource, updateV4Resource, type ActionSpec, type ResourceSpec } from '@/api/v4'
+import { executeV4Action, fetchV4Resource, updateV4Resource, type ActionSpec, type FieldSpec, type ResourceSpec } from '@/api/v4'
 import { useAuth } from '@/composables/useAuth'
 import { useCatalog } from '@/composables/useCatalog'
 import { useFleet } from '@/composables/useFleet'
@@ -162,6 +178,8 @@ const form = ref<Record<string, unknown>>({})
 const dryRunPreview = ref<Record<string, unknown> | null>(null)
 
 const canUpdate = computed(() => spec.value?.operations?.includes('update') ?? false)
+const hasActions = computed(() => (spec.value?.actions?.length ?? 0) > 0)
+const isUpstreamReadOnly = computed(() => Boolean(spec.value) && !canUpdate.value && !hasActions.value)
 
 async function load() {
   const seq = ++reqSeq
@@ -176,21 +194,8 @@ async function load() {
     spec.value = res.resource
     const obj = res.config || res.rows[0] || {}
     configData.value = obj
-    const nextForm: Record<string, unknown> = {}
-    for (const f of res.resource.fields || []) {
-      const raw = obj[f.key]
-      if (f.type === 'csv' && raw && typeof raw === 'object') {
-        nextForm[f.key] = compoundToCSV(raw)
-      } else if (f.type === 'password') {
-        nextForm[f.key] = ''
-      } else if (f.type === 'select' || f.type === 'switch') {
-        nextForm[f.key] = raw !== undefined && raw !== null ? String(raw) : (f.default ?? '')
-      } else {
-        nextForm[f.key] = raw !== undefined && raw !== null ? raw : (f.default ?? '')
-      }
-    }
-    form.value = nextForm
-    rawJsonText.value = JSON.stringify(buildRawSnapshot(obj, nextForm), null, 2)
+    populateFormFromObject(obj, res.resource.fields || [])
+    rawJsonText.value = JSON.stringify(buildRawSnapshot(obj, form.value), null, 2)
   } catch (e: unknown) {
     if (seq !== reqSeq) return
     loadFailed.value = true
@@ -232,9 +237,58 @@ function buildRawSnapshot(base: Record<string, unknown>, edits: Record<string, u
   return merged
 }
 
+function populateFormFromObject(obj: Record<string, unknown>, fields: FieldSpec[]) {
+  const nextForm: Record<string, unknown> = {}
+  for (const f of fields) {
+    const raw = obj[f.key]
+    if (f.type === 'csv' && raw && typeof raw === 'object') {
+      nextForm[f.key] = compoundToCSV(raw)
+    } else if (f.type === 'password') {
+      nextForm[f.key] = ''
+    } else if (f.type === 'select' || f.type === 'switch') {
+      nextForm[f.key] = raw !== undefined && raw !== null ? String(raw) : (f.default ?? '')
+    } else {
+      nextForm[f.key] = raw !== undefined && raw !== null ? raw : (f.default ?? '')
+    }
+  }
+  form.value = nextForm
+}
+
 function enterRawMode() {
   rawJsonText.value = JSON.stringify(buildRawSnapshot(configData.value, form.value), null, 2)
   rawJsonMode.value = true
+}
+
+function exitRawMode() {
+  if (!rawJsonMode.value) return
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawJsonText.value)
+  } catch {
+    error.value = 'JSON 格式无效，请先修正语法再切回可视化表单'
+    return
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    error.value = 'JSON 根节点必须是对象格式 ({ ... })'
+    return
+  }
+  error.value = null
+  const prev = configData.value
+  const parsedObj = parsed as Record<string, unknown>
+  const mergedObj = { ...prev, ...parsedObj }
+  configData.value = mergedObj
+  populateFormFromObject(mergedObj, spec.value?.fields || [])
+  for (const f of spec.value?.fields || []) {
+    if (
+      f.type === 'password' &&
+      typeof parsedObj[f.key] === 'string' &&
+      parsedObj[f.key] !== '' &&
+      parsedObj[f.key] !== prev[f.key]
+    ) {
+      form.value[f.key] = parsedObj[f.key]
+    }
+  }
+  rawJsonMode.value = false
 }
 
 async function submit(dryRun: boolean) {
@@ -246,16 +300,26 @@ async function submit(dryRun: boolean) {
   error.value = null
   let payload: Record<string, unknown> = { ...form.value }
   if (rawJsonMode.value) {
+    let parsed: unknown
     try {
-      payload = JSON.parse(rawJsonText.value)
+      parsed = JSON.parse(rawJsonText.value)
     } catch {
       error.value = 'JSON 格式无效，请检查'
       saving.value = false
       return
     }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      error.value = 'JSON 根节点必须是对象格式 ({ ... })'
+      saving.value = false
+      return
+    }
+    payload = parsed as Record<string, unknown>
   } else {
     for (const f of spec.value?.fields || []) {
-      if (f.type === 'password' && payload[f.key] === '') {
+      const val = payload[f.key]
+      if (f.type === 'password' && val === '') {
+        delete payload[f.key]
+      } else if (f.type === 'number' && (val === '' || val === null || Number.isNaN(val))) {
         delete payload[f.key]
       }
     }
@@ -411,7 +475,7 @@ watch(
 .kv-item {
   padding: 10px 12px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   background: var(--surface-input);
   display: flex;
   flex-direction: column;
@@ -452,8 +516,8 @@ watch(
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-subtle);
+  padding-top: 12px;
+  border-top: 1px solid var(--divider-line);
 }
 
 .ok-icon {

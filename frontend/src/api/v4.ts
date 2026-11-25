@@ -295,6 +295,7 @@ export interface ResourceSpec {
   columns: ColumnSpec[]
   fields: FieldSpec[]
   actions?: ActionSpec[]
+  object_value_key?: string
   delete_mode?: 'id' | 'clear' | 'srcfile'
   supports_paging: boolean
 }

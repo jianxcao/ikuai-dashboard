@@ -6,6 +6,13 @@
           <h3>{{ spec?.label || resourceKey }}</h3>
           <span v-if="spec" class="v4-badge font-mono">{{ spec.v4_path }}</span>
           <span class="v4-badge">共 {{ total }} 条</span>
+          <span
+            v-if="isUpstreamReadOnly"
+            class="v4-badge"
+            title="爱快 V4.0 OpenAPI 与 ikuai-cli 当前未开放此资源的写接口"
+          >
+            V4 接口只读
+          </span>
           <span v-if="readOnly" class="v4-badge v4-badge-warn">只读锁定</span>
         </div>
         <p v-if="spec?.description" class="desc">{{ spec.description }}</p>
@@ -44,11 +51,11 @@
           type="button"
           class="v4-btn v4-btn-primary"
           :disabled="readOnly || loadFailed"
-          :title="readOnly ? '只读模式下仍可在列表/表单点击 Dry-Run 预览，禁止直接新建' : '新建规则'"
+          :title="readOnly ? `只读模式下仍可在列表/表单点击 Dry-Run 预览，禁止直接${createButtonLabel}` : createButtonLabel"
           @click="openCreateDrawer"
         >
           <Plus :size="15" />
-          <span>新建规则</span>
+          <span>{{ createButtonLabel }}</span>
         </button>
 
         <button
@@ -114,7 +121,7 @@
         <thead>
           <tr>
             <th v-for="col in displayColumns" :key="col.key">{{ col.label }}</th>
-            <th class="actions-col">操作</th>
+            <th class="actions-col">{{ isUpstreamReadOnly ? '详情' : '操作' }}</th>
           </tr>
         </thead>
         <tbody>
@@ -188,7 +195,7 @@
                 <button
                   v-if="resourceKey === 'wireguard'"
                   type="button"
-                  class="v4-btn btn-xs v4-btn-primary"
+                  class="v4-btn btn-xs"
                   title="管理 WireGuard Peers"
                   @click="openPeersModal(row)"
                 >
@@ -244,7 +251,7 @@
     <!-- Create / Edit Drawer -->
     <teleport to="body">
       <div v-if="drawerOpen" class="drawer-backdrop" @click.self="drawerOpen = false">
-        <div class="drawer-panel v4-panel" role="dialog" :aria-label="editingId ? '编辑规则' : '新建规则'">
+        <div class="drawer-panel v4-panel" role="dialog" :aria-label="editingId ? `编辑${itemNoun}` : createButtonLabel">
           <div class="drawer-head">
             <div>
               <strong>{{ editingId ? `编辑 ${spec?.label} #${editingId}` : `新建 ${spec?.label}` }}</strong>
@@ -257,12 +264,14 @@
 
           <div class="drawer-body">
             <div class="mode-switch">
-              <button type="button" class="v4-btn" :class="{ 'v4-btn-primary': !rawJsonMode }" @click="rawJsonMode = false">可视化表单</button>
-              <button type="button" class="v4-btn" :class="{ 'v4-btn-primary': rawJsonMode }" @click="switchToRawJson">高级 JSON</button>
+              <div class="v4-seg-bar" role="tablist">
+                <button type="button" class="v4-seg-btn" :class="{ active: !rawJsonMode }" @click="exitRawJson">可视化表单</button>
+                <button type="button" class="v4-seg-btn" :class="{ active: rawJsonMode }" @click="switchToRawJson">高级 JSON</button>
+              </div>
               <button
                 v-if="resourceKey === 'wireguard'"
                 type="button"
-                class="v4-btn"
+                class="v4-btn btn-xs"
                 :disabled="generatingKeys"
                 @click="generateWGKeys"
               >
@@ -656,6 +665,49 @@ const peersModal = reactive({
   },
 })
 
+const RESOURCE_COPY_MAP: Record<string, { createLabel: string; noun: string }> = {
+  'dhcp-services': { createLabel: '新建地址池', noun: '地址池' },
+  'dhcp-static': { createLabel: '新增静态绑定', noun: '静态绑定' },
+  vlan: { createLabel: '新建 VLAN', noun: 'VLAN' },
+  'dmz-rules': { createLabel: '新增 DMZ 主机', noun: 'DMZ 主机' },
+  'static-routes': { createLabel: '新建静态路由', noun: '静态路由' },
+  terminals: { createLabel: '新增终端标注', noun: '终端标注' },
+  'auth-accounts': { createLabel: '新增认证账号', noun: '认证账号' },
+  'auth-packages': { createLabel: '新建套餐', noun: '套餐' },
+  wireguard: { createLabel: '新建隧道', noun: '隧道' },
+  'ipsec-clients': { createLabel: '新建站点隧道', noun: '站点隧道' },
+  'openvpn-clients': { createLabel: '新建客户端', noun: '客户端连接' },
+  'pptp-clients': { createLabel: '新建客户端', noun: '客户端连接' },
+  'l2tp-clients': { createLabel: '新建客户端', noun: '客户端连接' },
+  'ikev2-clients': { createLabel: '新建客户端', noun: '客户端连接' },
+  'wireless-blacklist': { createLabel: '新增黑白名单', noun: '无线黑白名单' },
+  'wireless-vlan': { createLabel: '新增 VLAN 绑定', noun: '无线 VLAN 绑定' },
+  'ftp-users': { createLabel: '新增 FTP 账号', noun: 'FTP 账号' },
+  'http-users': { createLabel: '新建 HTTP 站点', noun: 'HTTP 站点' },
+  'samba-users': { createLabel: '新建共享目录', noun: '共享目录' },
+  'reboot-schedules': { createLabel: '新建定时任务', noun: '定时任务' },
+  'web-admin-groups': { createLabel: '新建权限组', noun: '权限组' },
+  'web-admin-accounts': { createLabel: '新增管理员', noun: '管理员账号' },
+}
+
+const resourceCopy = computed(() => {
+  const mapped = RESOURCE_COPY_MAP[props.resourceKey]
+  if (mapped) return mapped
+  if (spec.value?.group === 'objects') {
+    return { createLabel: '新建对象组', noun: '对象组' }
+  }
+  return { createLabel: '新建规则', noun: '规则' }
+})
+const createButtonLabel = computed(() => resourceCopy.value.createLabel)
+const itemNoun = computed(() => resourceCopy.value.noun)
+
+const isUpstreamReadOnly = computed(() => {
+  if (!spec.value) return false
+  const hasWriteOp = (spec.value.operations || []).some((op) => ['create', 'update', 'toggle', 'delete'].includes(op))
+  const hasActions = (spec.value.actions?.length ?? 0) > 0
+  return !hasWriteOp && !hasActions && props.resourceKey !== 'dhcp-leases'
+})
+
 const canCreate = computed(() => spec.value?.operations?.includes('create') ?? false)
 const canUpdate = computed(() => spec.value?.operations?.includes('update') ?? false)
 const canToggle = computed(() => spec.value?.operations?.includes('toggle') ?? false)
@@ -800,7 +852,7 @@ async function handleToggle(row: Record<string, unknown>) {
   try {
     await toggleV4Resource(props.resourceKey, id, next)
     row.enabled = next
-    showToast(`规则 #${id} 已${next === 'yes' ? '启用' : '禁用'}`)
+    showToast(`${itemNoun.value} #${id} 已${next === 'yes' ? '启用' : '禁用'}`)
   } catch (e: unknown) {
     error.value = extractError(e)
   } finally {
@@ -826,16 +878,11 @@ function openCreateDrawer() {
     init[field.key] = field.default ?? ''
   }
   formState.value = init
-  rawJsonText.value = JSON.stringify(init, null, 2)
+  rawJsonText.value = JSON.stringify(buildRawPayloadFromForm(init), null, 2)
   drawerOpen.value = true
 }
 
-function openEditDrawer(row: Record<string, unknown>) {
-  editingId.value = String(row.id ?? '')
-  editingRow.value = row
-  rawJsonMode.value = false
-  drawerError.value = null
-  dryRunPreview.value = null
+function mapRowToFormState(row: Record<string, unknown>): Record<string, unknown> {
   const init: Record<string, unknown> = {}
   for (const field of spec.value?.fields || []) {
     const val = row[field.key]
@@ -849,6 +896,16 @@ function openEditDrawer(row: Record<string, unknown>) {
       init[field.key] = val ?? field.default ?? ''
     }
   }
+  return init
+}
+
+function openEditDrawer(row: Record<string, unknown>) {
+  editingId.value = String(row.id ?? '')
+  editingRow.value = row
+  rawJsonMode.value = false
+  drawerError.value = null
+  dryRunPreview.value = null
+  const init = mapRowToFormState(row)
   formState.value = init
   rawJsonText.value = JSON.stringify(buildRawPayloadFromForm(init), null, 2)
   drawerOpen.value = true
@@ -883,12 +940,102 @@ function buildRawPayloadFromForm(edits: Record<string, unknown>): Record<string,
       base[field.key] = val
     }
   }
+  const objKey = spec.value?.object_value_key
+  if (objKey) {
+    const parts = String(edits.value ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    base.group_value = parts.map((p) => ({ [objKey]: p }))
+    delete base.value
+  }
+  if (props.resourceKey === 'time-objects') {
+    const tVal = String(edits.type || 'weekly')
+    const firstWindow: Record<string, unknown> = {
+      type: tVal,
+      start_time: String(edits.start_time || '00:00'),
+      end_time: String(edits.end_time || '23:59'),
+      comment: String(edits.val_comment ?? ''),
+    }
+    if (tVal === 'weekly') {
+      firstWindow.weekdays = String(edits.weekdays || '1234567')
+    }
+    const prevGV = Array.isArray(editingRow.value?.group_value) ? editingRow.value.group_value : []
+    base.group_value = [firstWindow, ...prevGV.slice(1)]
+    for (const k of ['type', 'weekdays', 'start_time', 'end_time', 'val_comment', 'value']) {
+      delete base[k]
+    }
+  }
   return base
 }
 
 function switchToRawJson() {
   rawJsonText.value = JSON.stringify(buildRawPayloadFromForm(formState.value), null, 2)
   rawJsonMode.value = true
+}
+
+function exitRawJson() {
+  if (!rawJsonMode.value) return
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawJsonText.value)
+  } catch {
+    drawerError.value = 'JSON 格式无效，请先修正语法再切回可视化表单'
+    return
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    drawerError.value = 'JSON 根节点必须是对象格式 ({ ... })'
+    return
+  }
+  drawerError.value = null
+  const prevRow = editingRow.value
+  const parsedObj = parsed as Record<string, unknown>
+  const mergedRow: Record<string, unknown> = prevRow ? { ...prevRow, ...parsedObj } : { ...parsedObj }
+  const objKey = spec.value?.object_value_key
+  if (objKey && Array.isArray(parsedObj.group_value) && parsedObj.value === undefined) {
+    mergedRow.value = parsedObj.group_value
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+      .map((item) => String(item[objKey] ?? item.value ?? '').trim())
+      .filter(Boolean)
+      .join(',')
+  }
+  if (props.resourceKey === 'time-objects' && Array.isArray(parsedObj.group_value) && parsedObj.group_value.length > 0) {
+    const firstRaw = parsedObj.group_value[0]
+    if (firstRaw && typeof firstRaw === 'object' && !Array.isArray(firstRaw)) {
+      const first = firstRaw as Record<string, unknown>
+      if (parsedObj.type === undefined && first.type !== undefined) {
+        mergedRow.type = String(first.type)
+      }
+      if (parsedObj.weekdays === undefined) {
+        mergedRow.weekdays = first.weekdays !== undefined ? String(first.weekdays) : ''
+      }
+      if (parsedObj.start_time === undefined && first.start_time !== undefined) {
+        mergedRow.start_time = String(first.start_time)
+      }
+      if (parsedObj.end_time === undefined && first.end_time !== undefined) {
+        mergedRow.end_time = String(first.end_time)
+      }
+      if (parsedObj.val_comment === undefined) {
+        mergedRow.val_comment = first.comment !== undefined ? String(first.comment) : ''
+      }
+    }
+  }
+  if (prevRow) {
+    editingRow.value = mergedRow
+  }
+  const nextForm = mapRowToFormState(mergedRow)
+  for (const field of spec.value?.fields || []) {
+    if (
+      field.type === 'password' &&
+      typeof parsedObj[field.key] === 'string' &&
+      parsedObj[field.key] !== '' &&
+      parsedObj[field.key] !== prevRow?.[field.key]
+    ) {
+      nextForm[field.key] = parsedObj[field.key]
+    }
+  }
+  formState.value = nextForm
+  rawJsonMode.value = false
 }
 
 async function generateWGKeys() {
@@ -916,22 +1063,26 @@ async function submitForm(dryRun: boolean) {
   drawerError.value = null
   let payload: Record<string, unknown>
   if (rawJsonMode.value) {
+    let parsed: unknown
     try {
-      payload = JSON.parse(rawJsonText.value)
+      parsed = JSON.parse(rawJsonText.value)
     } catch {
       drawerError.value = 'JSON 格式无效，请检查语法'
       return
     }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      drawerError.value = 'JSON 根节点必须是对象格式 ({ ... })'
+      return
+    }
+    payload = parsed as Record<string, unknown>
   } else {
     payload = { ...formState.value }
-    if (editingId.value) {
-      for (const field of spec.value?.fields || []) {
-        const val = payload[field.key]
-        if (field.type === 'password' && val === '') {
-          delete payload[field.key]
-        } else if (field.type === 'number' && (val === '' || val === null || Number.isNaN(val))) {
-          delete payload[field.key]
-        }
+    for (const field of spec.value?.fields || []) {
+      const val = payload[field.key]
+      if (field.type === 'password' && editingId.value && val === '') {
+        delete payload[field.key]
+      } else if (field.type === 'number' && (val === '' || val === null || Number.isNaN(val))) {
+        delete payload[field.key]
       }
     }
   }
@@ -946,7 +1097,7 @@ async function submitForm(dryRun: boolean) {
       dryRunPreview.value = res
     } else {
       drawerOpen.value = false
-      showToast(editingId.value ? '规则已更新' : '规则已创建')
+      showToast(editingId.value ? `${itemNoun.value}已更新` : `${itemNoun.value}已创建`)
       await reload()
     }
   } catch (e: unknown) {
@@ -1268,7 +1419,7 @@ watch(
 
 .table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   border-radius: var(--radius-md);
 }
 
@@ -1282,18 +1433,16 @@ watch(
   text-align: left;
   padding: 10px 12px;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 600;
   color: var(--text-muted);
   background: var(--surface-table-head);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
   white-space: nowrap;
 }
 
 .v4-table td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
   color: var(--text-normal);
   vertical-align: middle;
   white-space: nowrap;
@@ -1420,6 +1569,7 @@ watch(
   inset: 0;
   z-index: 250;
   background: rgba(6, 10, 20, 0.42);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   display: flex;
   justify-content: flex-end;
@@ -1437,6 +1587,10 @@ watch(
   display: flex;
   flex-direction: column;
   background: var(--surface-popover);
+  border-color: var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
+  -webkit-backdrop-filter: var(--backdrop-chrome);
+  backdrop-filter: var(--backdrop-chrome);
 }
 
 .wide-drawer {
@@ -1445,7 +1599,7 @@ watch(
 
 .drawer-head {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1533,12 +1687,12 @@ watch(
   padding: 12px;
   border-radius: var(--radius-md);
   background: var(--surface-input);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
 }
 
 .drawer-foot {
   padding: 14px 20px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--divider-line);
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -1548,6 +1702,10 @@ watch(
   width: min(440px, calc(100vw - 32px));
   padding: 20px;
   background: var(--surface-popover);
+  border-color: var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
+  -webkit-backdrop-filter: var(--backdrop-chrome);
+  backdrop-filter: var(--backdrop-chrome);
   display: flex;
   flex-direction: column;
   gap: 12px;
