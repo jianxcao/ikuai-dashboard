@@ -120,9 +120,19 @@ type Client struct {
 
 // NewClient constructs an iKuai v4 REST client with optional TLS skip-verify.
 func NewClient(baseURL, token string, insecureSkipVerify bool) *Client {
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify}, //nolint:gosec
+	var transport *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = base.Clone()
+	} else {
+		transport = &http.Transport{}
 	}
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: insecureSkipVerify} //nolint:gosec
+	transport.MaxIdleConns = 100
+	transport.MaxIdleConnsPerHost = 24
+	transport.IdleConnTimeout = 90 * time.Second
+	transport.TLSHandshakeTimeout = 5 * time.Second
+	transport.ForceAttemptHTTP2 = true
+
 	return &Client{
 		BaseURL:            NormalizeBaseURL(baseURL),
 		Token:              strings.TrimSpace(token),
@@ -261,6 +271,9 @@ func (c *Client) checkResponse(resp *http.Response) (json.RawMessage, error) {
 
 	body := SanitizeNil(raw)
 	trimmedBody := strings.TrimSpace(string(body))
+	if trimmedBody == "" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return []byte(`{"message":"Success"}`), nil
+	}
 	if resp.StatusCode >= 400 && strings.HasPrefix(trimmedBody, "<") {
 		reqPath := ""
 		if resp.Request != nil && resp.Request.URL != nil {

@@ -6,8 +6,10 @@ import (
 	"crypto/ecdh"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"ikuai-dashboard/backend/internal/config"
@@ -274,5 +276,272 @@ func TestGenerateWGKeypairValidX25519(t *testing.T) {
 	}
 	if !bytes.Equal(priv.PublicKey().Bytes(), pubBytes) {
 		t.Fatalf("public key mismatch: got %x want %x", pubBytes, priv.PublicKey().Bytes())
+	}
+}
+
+func TestFirmwareContractFixes(t *testing.T) {
+	srSpec, _ := Lookup("static-routes")
+	srBody := preparePayload(srSpec, map[string]any{"tagname": "sr1"}, true)
+	if srBody["ip_type"] != "4" {
+		t.Fatalf("expected static-routes default ip_type='4', got %#v", srBody["ip_type"])
+	}
+
+	natSpec, _ := Lookup("nat-rules")
+	for _, f := range natSpec.Fields {
+		if f.Key == "action" {
+			for _, opt := range f.Options {
+				if opt.Value == "masquerade" {
+					t.Fatalf("unexpected unsupported action option masquerade in nat-rules")
+				}
+			}
+		}
+	}
+	natBody := preparePayload(natSpec, map[string]any{"tagname": "nat1", "action": "dnat"}, true)
+	if _, hasInv := natBody["src_addr_inv"]; !hasInv {
+		t.Fatalf("expected nat-rules defaults to include src_addr_inv, got %+v", natBody)
+	}
+
+	ovpnSpec, _ := Lookup("openvpn-clients")
+	ovpnBody := preparePayload(ovpnSpec, map[string]any{
+		"name": "ovpne2e",
+		"ca":   "-----BEGIN CERTIFICATE-----\nMIIBkTCB\n-----END CERTIFICATE-----\n",
+	}, true)
+	wantCA := "-----BEGIN#CERTIFICATE-----@MIIBkTCB@-----END#CERTIFICATE-----"
+	if ovpnBody["ca"] != wantCA {
+		t.Fatalf("expected PEM encoded ca=%q, got %q", wantCA, ovpnBody["ca"])
+	}
+	if _, hasTLSAuth := ovpnBody["tls_auth"]; !hasTLSAuth {
+		t.Fatalf("expected openvpn-clients default tls_auth present")
+	}
+
+	vrrpSpec, _ := Lookup("vrrp-config")
+	vrrpMerged := buildMergedUpdateBody(vrrpSpec, "", map[string]any{"prio": 151}, map[string]any{"prio": 151}, map[string]any{"enabled": "no", "type": 1})
+	if vrrpMerged["method"] != 0 || vrrpMerged["domain"] == "" || vrrpMerged["dns"] == "" || vrrpMerged["interval"] != 3 {
+		t.Fatalf("expected vrrp-config invariants filled, got %+v", vrrpMerged)
+	}
+
+	bautoSpec, _ := Lookup("backup-auto")
+	bautoMerged := buildMergedUpdateBody(bautoSpec, "", map[string]any{"enabled": "no"}, map[string]any{"enabled": "no"}, map[string]any{"id": 1, "strategy": "one", "cycle_time": "", "time": "", "valid_days": 0})
+	if bautoMerged["time"] != "23:59" || bautoMerged["cycle_time"] == "" {
+		t.Fatalf("expected backup-auto invariants filled for empty schedule, got %+v", bautoMerged)
+	}
+}
+
+func TestReviewFixesNumericEmptyPEMAndMethod(t *testing.T) {
+	vrrpSpec, _ := Lookup("vrrp-config")
+	vrrpPayload := preparePayload(vrrpSpec, map[string]any{"method": "1"}, false)
+	if m, ok := vrrpPayload["method"].(int64); !ok || m != 1 {
+		t.Fatalf("expected method coerced to int64(1), got %T (%v)", vrrpPayload["method"], vrrpPayload["method"])
+	}
+
+	aclSpec, _ := Lookup("acl-rules")
+	aclCreate := preparePayload(aclSpec, map[string]any{"tagname": "t1", "prio": ""}, true)
+	if prio, ok := aclCreate["prio"].(int); !ok || prio != 50 {
+		t.Fatalf("expected blank numeric prio on create to fall back to default 50, got %T (%v)", aclCreate["prio"], aclCreate["prio"])
+	}
+
+	secAdvSpec, _ := Lookup("security-advanced")
+	advMerged := buildMergedUpdateBody(
+		secAdvSpec,
+		"",
+		map[string]any{"dos_lan_num": ""},
+		preparePayload(secAdvSpec, map[string]any{"dos_lan_num": ""}, false),
+		map[string]any{"dos_lan_num": float64(300)},
+	)
+	if advMerged["dos_lan_num"] != float64(300) {
+		t.Fatalf("expected blank numeric update to preserve baseline 300, got %#v", advMerged["dos_lan_num"])
+	}
+
+	dirtyPEM := "  -----BEGIN   CERTIFICATE-----  \r\n  MIIBkTCB   \n\n   +wIJAL \t \r\n  -----END CERTIFICATE-----  \n"
+	encoded := encodeIKuaiPEM(dirtyPEM)
+	wantEncoded := "-----BEGIN#CERTIFICATE-----@MIIBkTCB@+wIJAL@-----END#CERTIFICATE-----"
+	if encoded != wantEncoded {
+		t.Fatalf("expected clean encoded PEM %q, got %q", wantEncoded, encoded)
+	}
+
+	decoded := decodeIKuaiPEM(encoded)
+	wantDecoded := "-----BEGIN CERTIFICATE-----\nMIIBkTCB\n+wIJAL\n-----END CERTIFICATE-----"
+	if decoded != wantDecoded {
+		t.Fatalf("expected clean decoded PEM %q, got %q", wantDecoded, decoded)
+	}
+	if reEncoded := encodeIKuaiPEM(decoded); reEncoded != wantEncoded {
+		t.Fatalf("expected lossless PEM round-trip %q, got %q", wantEncoded, reEncoded)
+	}
+}
+
+func TestSecondReviewMockPEMAndObjectMerge(t *testing.T) {
+	ipSpec, ok := Lookup("ip-objects")
+	if !ok {
+		t.Fatalf("missing ip-objects spec")
+	}
+	specJSON, err := json.Marshal(ipSpec)
+	if err != nil {
+		t.Fatalf("marshal ip-objects spec failed: %v", err)
+	}
+	if !strings.Contains(string(specJSON), `"object_value_key":"ip"`) {
+		t.Fatalf("expected ip-objects JSON to expose object_value_key='ip', got %s", string(specJSON))
+	}
+
+	ipExisting := map[string]any{
+		"id":          1,
+		"group_name":  "servers",
+		"group_value": []any{map[string]any{"ip": "192.168.9.10"}},
+		"value":       "192.168.9.10",
+		"comment":     "old",
+	}
+	ipMerged := buildMergedUpdateBody(
+		ipSpec,
+		"1",
+		map[string]any{"comment": "new", "group_value": []any{map[string]any{"ip": "10.0.0.1"}}},
+		preparePayload(ipSpec, map[string]any{"comment": "new", "group_value": []any{map[string]any{"ip": "10.0.0.1"}}}, false),
+		ipExisting,
+	)
+	if _, hasSynthValue := ipMerged["value"]; hasSynthValue {
+		t.Fatalf("expected synthetic value stripped from ip-objects merged body, got %+v", ipMerged)
+	}
+	if ipMerged["comment"] != "new" {
+		t.Fatalf("expected ip-objects comment updated, got %+v", ipMerged)
+	}
+
+	timeSpec, ok := Lookup("time-objects")
+	if !ok {
+		t.Fatalf("missing time-objects spec")
+	}
+	timeExisting := map[string]any{
+		"id":          2,
+		"group_name":  "work_hours",
+		"group_value": []any{map[string]any{"type": "weekly", "weekdays": "12345", "start_time": "09:00", "end_time": "18:00", "comment": ""}},
+		"type":        "weekly",
+		"weekdays":    "12345",
+		"start_time":  "09:00",
+		"end_time":    "18:00",
+		"val_comment": "work",
+		"value":       "weekly 12345 09:00~18:00",
+		"comment":     "old",
+	}
+	timeRaw := map[string]any{
+		"group_name":  "work_hours",
+		"group_value": []any{map[string]any{"type": "date", "start_time": "2026-12-01T08:00", "end_time": "2026-12-02T18:00", "comment": "holiday"}},
+		"comment":     "updated",
+	}
+	timeMerged := buildMergedUpdateBody(timeSpec, "2", timeRaw, preparePayload(timeSpec, timeRaw, false), timeExisting)
+	for _, synth := range []string{"value", "type", "weekdays", "start_time", "end_time", "val_comment"} {
+		if _, exists := timeMerged[synth]; exists {
+			t.Fatalf("expected synthetic key %q stripped from time-objects merged body, got %+v", synth, timeMerged)
+		}
+	}
+	if timeMerged["comment"] != "updated" {
+		t.Fatalf("expected time-objects comment updated, got %+v", timeMerged)
+	}
+
+	mockRouter := config.RouterConfig{ID: "mock1", Name: "Mock", Mock: true}
+	pemCA := "-----BEGIN CERTIFICATE-----\nMIIBkTCB\n+wIJAL==\n-----END CERTIFICATE-----"
+	created, err := Create(context.Background(), mockRouter, nil, "openvpn-clients", map[string]any{
+		"name":        "ovpnmocktest",
+		"remote_addr": "vpn.example.com",
+		"interface":   "auto",
+		"ca":          pemCA,
+		"comment":     "orig-comment",
+	}, false)
+	if err != nil {
+		t.Fatalf("mock Create failed: %v", err)
+	}
+	rowid := fmt.Sprint(created["rowid"])
+	defer func() {
+		_, _ = Delete(context.Background(), mockRouter, nil, "openvpn-clients", rowid, false)
+	}()
+
+	res1, err := ListOrGet(context.Background(), mockRouter, nil, "openvpn-clients", 1, 20, "", "")
+	if err != nil || len(res1.Rows) == 0 {
+		t.Fatalf("mock ListOrGet failed: rows=%d err=%v", len(res1.Rows), err)
+	}
+	var targetRow map[string]any
+	for _, r := range res1.Rows {
+		if fmt.Sprint(r["id"]) == rowid {
+			targetRow = r
+			break
+		}
+	}
+	if targetRow == nil {
+		t.Fatalf("created mock rowid %s not found in ListOrGet", rowid)
+	}
+	gotCA := fmt.Sprint(targetRow["ca"])
+	if gotCA != pemCA || strings.Contains(gotCA, "@") || strings.Contains(gotCA, "#") {
+		t.Fatalf("expected mock ListOrGet to decode PEM cleanly, got %q", gotCA)
+	}
+
+	targetRow["comment"] = "tampered-by-caller"
+	res2, err := ListOrGet(context.Background(), mockRouter, nil, "openvpn-clients", 1, 20, "", "")
+	if err != nil {
+		t.Fatalf("second mock ListOrGet failed: %v", err)
+	}
+	for _, r := range res2.Rows {
+		if fmt.Sprint(r["id"]) == rowid && r["comment"] != "orig-comment" {
+			t.Fatalf("expected mock store isolated from caller row mutation, got comment=%v", r["comment"])
+		}
+	}
+}
+
+func TestThirdReviewMockObjectAndTimeUpdate(t *testing.T) {
+	mockRouter := config.RouterConfig{ID: "mock1", Name: "Mock", Mock: true}
+
+	createdIP, err := Create(context.Background(), mockRouter, nil, "ip-objects", map[string]any{
+		"group_name": "mock_json_obj",
+		"value":      "10.0.0.1",
+		"comment":    "init",
+	}, false)
+	if err != nil {
+		t.Fatalf("mock ip-objects Create failed: %v", err)
+	}
+	ipID := fmt.Sprint(createdIP["rowid"])
+	defer func() {
+		_, _ = Delete(context.Background(), mockRouter, nil, "ip-objects", ipID, false)
+	}()
+
+	_, err = Update(context.Background(), mockRouter, nil, "ip-objects", ipID, map[string]any{
+		"group_name": "mock_json_obj",
+		"group_value": []any{
+			map[string]any{"ip": "10.10.10.1"},
+			map[string]any{"ip": "10.10.10.2"},
+		},
+		"comment": "json-updated",
+	}, false)
+	if err != nil {
+		t.Fatalf("mock ip-objects JSON Update failed: %v", err)
+	}
+	ipList, err := ListOrGet(context.Background(), mockRouter, nil, "ip-objects", 1, 50, "", "")
+	if err != nil {
+		t.Fatalf("mock ip-objects ListOrGet failed: %v", err)
+	}
+	var updatedIP map[string]any
+	for _, r := range ipList.Rows {
+		if fmt.Sprint(r["id"]) == ipID {
+			updatedIP = r
+			break
+		}
+	}
+	if updatedIP == nil || updatedIP["value"] != "10.10.10.1,10.10.10.2" {
+		t.Fatalf("expected mock ip-objects JSON update to compute value='10.10.10.1,10.10.10.2', got %+v", updatedIP)
+	}
+
+	_, err = Update(context.Background(), mockRouter, nil, "time-objects", "1", map[string]any{
+		"comment": "工作日办公时段",
+	}, false)
+	if err != nil {
+		t.Fatalf("mock time-objects seed Update failed: %v", err)
+	}
+	timeList, err := ListOrGet(context.Background(), mockRouter, nil, "time-objects", 1, 50, "", "")
+	if err != nil {
+		t.Fatalf("mock time-objects ListOrGet failed: %v", err)
+	}
+	var seedTime map[string]any
+	for _, r := range timeList.Rows {
+		if fmt.Sprint(r["id"]) == "1" {
+			seedTime = r
+			break
+		}
+	}
+	if seedTime == nil || seedTime["value"] != "weekly 12345 09:00~18:00" || seedTime["start_time"] != "09:00" {
+		t.Fatalf("expected mock time-objects seed update to preserve schedule window, got %+v", seedTime)
 	}
 }

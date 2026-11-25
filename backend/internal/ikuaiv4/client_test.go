@@ -181,3 +181,17 @@ func TestExtractObjectUnwrapsDataArrayAndHTML404(t *testing.T) {
 		t.Fatalf("expected APIError 404 on HTML 404, got %v", err)
 	}
 }
+
+func TestClientHandlesEmpty200Body(t *testing.T) {
+	rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return makeResponse(http.StatusOK, "   "), nil
+	})
+	client := NewClientWithHTTP("https://192.0.2.10", "tok", &http.Client{Transport: rt})
+	raw, err := client.Delete(context.Background(), "/wireless/access-control/rules/1")
+	if err != nil {
+		t.Fatalf("expected empty 200 body to succeed, got %v", err)
+	}
+	if obj := ExtractObject(raw); Str(obj, "message") != "Success" {
+		t.Fatalf("unexpected object from empty 200: %+v", obj)
+	}
+}

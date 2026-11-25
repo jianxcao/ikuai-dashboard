@@ -28,7 +28,7 @@ func routingAndQosSpecs() []ResourceSpec {
 				enabledField(),
 				commentField(),
 			},
-			Defaults: map[string]any{"enabled": "yes", "prio": 10, "comment": ""},
+			Defaults: map[string]any{"enabled": "yes", "ip_type": "4", "prio": 10, "comment": ""},
 		},
 		{
 			Key: "stream-domain", Group: "routing", Label: "域名分流", Kind: "collection",
@@ -417,7 +417,7 @@ func securitySpecs() []ResourceSpec {
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
 				{Key: "mode", Label: "匹配模式", Type: "select", Required: true, Default: "exact", Options: []OptionItem{{Label: "精确 (exact)", Value: "exact"}, {Label: "模糊 (vague)", Value: "vague"}}},
 				{Key: "src_url", Label: "源 URL", Type: "text", Required: true, Placeholder: "old.example.com"},
-				{Key: "dst_url", Label: "目标 URL", Type: "text", Required: true, Placeholder: "https://new.example.com"},
+				{Key: "dst_url", Label: "目标 URL (勿含 http://)", Type: "text", Required: true, Placeholder: "new.example.com"},
 				{Key: "hit_rate", Label: "命中率 (%)", Type: "number", Required: true, Default: 100},
 				{Key: "prio", Label: "优先级", Type: "number", Required: true, Default: 30},
 				enabledField(),

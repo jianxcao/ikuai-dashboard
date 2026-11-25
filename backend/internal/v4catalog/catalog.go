@@ -78,8 +78,8 @@ func networkSpecs() []ResourceSpec {
 	return []ResourceSpec{
 		{
 			Key: "wan-config", Group: "network", Label: "WAN 接口配置", Kind: "collection",
-			V4Path: "/interfaces/wan-config", CLICommand: "ikuai-cli network wan list",
-			Description: "查看各 WAN 口拨号方式、IP/掩码、网关、MAC 及 MTU 配置。",
+			V4Path: "/interfaces/wan-config", CLICommand: "ikuai-cli network wan",
+			Description: "查看各 WAN 口拨号方式、IP/掩码、网关、MAC 及 MTU 配置（爱快 v4.0 API 当前仅开放只读查询）。",
 			Operations:  []string{"list"},
 			Columns: []ColumnSpec{
 				{Key: "id", Label: "ID", Kind: "mono"},
@@ -93,8 +93,8 @@ func networkSpecs() []ResourceSpec {
 		},
 		{
 			Key: "lan-config", Group: "network", Label: "LAN 接口配置", Kind: "collection",
-			V4Path: "/interfaces/lan-config", CLICommand: "ikuai-cli network lan list",
-			Description: "查看内网 LAN 接口 IP 段、绑定网卡、DHCP 与 VLAN 状态。",
+			V4Path: "/interfaces/lan-config", CLICommand: "ikuai-cli network lan",
+			Description: "查看内网 LAN 接口 IP 段、绑定网卡、DHCP 与 VLAN 状态（爱快 v4.0 API 当前仅开放只读查询）。",
 			Operations:  []string{"list"},
 			Columns: []ColumnSpec{
 				{Key: "id", Label: "ID", Kind: "mono"},
@@ -107,8 +107,8 @@ func networkSpecs() []ResourceSpec {
 		},
 		{
 			Key: "wan-vlan", Group: "network", Label: "WAN VLAN 配置", Kind: "collection",
-			V4Path: "/interfaces/wan-vlan-config", CLICommand: "ikuai-cli network wan-vlan list",
-			Description: "查看 WAN 口子接口与多拨 VLAN 参数。",
+			V4Path: "/interfaces/wan-vlan-config", CLICommand: "ikuai-cli network wan-vlan",
+			Description: "查看 WAN 口子接口与多拨 VLAN 参数（爱快 v4.0 API 当前仅开放只读查询）。",
 			Operations:  []string{"list"},
 			Columns: []ColumnSpec{
 				{Key: "id", Label: "ID", Kind: "mono"},
@@ -121,8 +121,8 @@ func networkSpecs() []ResourceSpec {
 		},
 		{
 			Key: "physical-nics", Group: "network", Label: "物理网口信息", Kind: "collection",
-			V4Path: "/interfaces/physical", CLICommand: "ikuai-cli network physical list",
-			Description: "查看物理以太网口驱动、芯片型号、双工速率及绑定状态。",
+			V4Path: "/interfaces/physical", CLICommand: "ikuai-cli network physical",
+			Description: "查看物理以太网口驱动、芯片型号、双工速率及绑定状态（爱快 v4.0 API 当前仅开放只读查询）。",
 			Operations:  []string{"list"},
 			Columns: []ColumnSpec{
 				{Key: "name", Label: "网口", Kind: "mono"},
@@ -317,7 +317,7 @@ func networkSpecs() []ResourceSpec {
 				{Key: "enabled", Label: "启用", Kind: "toggle"},
 			},
 			Fields: []FieldSpec{
-				{Key: "vlan_name", Label: "VLAN 名称", Type: "text", Required: true, Placeholder: "IoT"},
+				{Key: "vlan_name", Label: "VLAN 名称 (需为 vlan+数字)", Type: "text", Required: true, Placeholder: "vlan100"},
 				{Key: "vlan_id", Label: "VLAN ID (1-4094)", Type: "number", Required: true, Placeholder: "100"},
 				{Key: "interface", Label: "绑定接口", Type: "text", Required: true, Default: "lan1"},
 				{Key: "ip_addr", Label: "IP 地址", Type: "text", Required: true, Placeholder: "10.0.100.1"},
@@ -380,8 +380,8 @@ func networkSpecs() []ResourceSpec {
 			},
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
-				{Key: "action", Label: "NAT 动作", Type: "select", Required: true, Default: "filter", Options: []OptionItem{
-					{Label: "SNAT", Value: "snat"}, {Label: "MASQUERADE", Value: "masquerade"}, {Label: "Filter", Value: "filter"},
+				{Key: "action", Label: "NAT 动作", Type: "select", Required: true, Default: "dnat", Options: []OptionItem{
+					{Label: "DNAT (目的映射)", Value: "dnat"}, {Label: "SNAT (源映射)", Value: "snat"}, {Label: "Filter (过滤)", Value: "filter"},
 				}},
 				{Key: "iinterface", Label: "入接口", Type: "text", Default: "any"},
 				{Key: "ointerface", Label: "出接口", Type: "text", Default: "any"},
@@ -390,10 +390,12 @@ func networkSpecs() []ResourceSpec {
 				}},
 				{Key: "src_addr", Label: "源地址", Type: "csv", Placeholder: "192.168.9.0/24"},
 				{Key: "dst_addr", Label: "目的地址", Type: "csv"},
+				{Key: "nat_addr", Label: "转换地址 (SNAT/DNAT)", Type: "text", Placeholder: "可选"},
+				{Key: "nat_port", Label: "转换端口", Type: "text", Placeholder: "可选"},
 				enabledField(),
 				commentField(),
 			},
-			Defaults:     map[string]any{"enabled": "yes", "src_addr": emptyCustomObj(), "dst_addr": emptyCustomObj(), "src_port": emptyCustomObj(), "dst_port": emptyCustomObj(), "comment": ""},
+			Defaults:     map[string]any{"enabled": "yes", "nat_addr": "", "nat_port": "", "src_addr_inv": 0, "dst_addr_inv": 0, "src_addr": emptyCustomObj(), "dst_addr": emptyCustomObj(), "src_port": emptyCustomObj(), "dst_port": emptyCustomObj(), "comment": ""},
 			UpdateFields: []string{"tagname", "enabled", "action", "iinterface", "ointerface", "src_addr", "dst_addr", "nat_addr", "nat_port", "protocol", "comment", "src_port", "dst_port", "src_addr_inv", "dst_addr_inv"},
 		},
 		{

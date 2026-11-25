@@ -22,7 +22,7 @@ var integerAPIFields = map[string]bool{
 	"id": true, "vlan_id": true, "vlanid": true, "lease": true, "delay": true,
 	"check_addr_valid": true, "check_relay_only": true, "cache_ttl": true,
 	"proxy_force": true, "is_ipv6": true, "prio": true, "priority": true,
-	"mode": true, "type": true, "iface_band": true,
+	"mode": true, "method": true, "type": true, "iface_band": true,
 	"src_addr_inv": true, "dst_addr_inv": true, "upload": true, "download": true,
 	"limits": true, "noping_lan": true, "noping_wan": true, "notracert": true,
 	"hijack_ping": true, "invalid": true, "acl_mac": true,
@@ -152,6 +152,7 @@ func ListOrGet(ctx context.Context, router config.RouterConfig, client *ikuaiv4.
 		if spec.Key == "cpufreq-mode" {
 			normalizeCPUFreqObject(obj)
 		}
+		decodeIKuaiPEMFields(obj)
 		return &ListResult{
 			Resource: spec,
 			Rows:     []map[string]any{obj},
@@ -184,6 +185,7 @@ func ListOrGet(ctx context.Context, router config.RouterConfig, client *ikuaiv4.
 		if spec.Key == "time-objects" {
 			flattenTimeGroupValue(r)
 		}
+		decodeIKuaiPEMFields(r)
 	}
 
 	if useLocalSearch {
@@ -446,10 +448,26 @@ func ExecuteAction(ctx context.Context, router config.RouterConfig, client *ikua
 	return ikuaiv4.ExtractObject(raw), nil
 }
 
+var pemCertificateFields = []string{"ca", "cert", "key", "tls_auth", "leftcert", "rightcert"}
+
 func preparePayload(spec ResourceSpec, input map[string]any, applyDefaults bool) map[string]any {
 	out := make(map[string]any, len(input)+8)
 	for k, v := range input {
+		if integerAPIFields[k] {
+			if v == nil {
+				continue
+			}
+			if s, isStr := v.(string); isStr && strings.TrimSpace(s) == "" {
+				continue
+			}
+		}
 		out[k] = coerceValue(k, v)
+	}
+
+	for _, pemKey := range pemCertificateFields {
+		if s, ok := out[pemKey].(string); ok {
+			out[pemKey] = encodeIKuaiPEM(s)
+		}
 	}
 
 	// Object groups convert "value": "1.1.1.1,2.2.2.2" -> group_value: [{key: "1.1.1.1"}, ...]
@@ -463,8 +481,8 @@ func preparePayload(spec ResourceSpec, input map[string]any, applyDefaults bool)
 				}
 				out["group_value"] = gv
 			}
-			delete(out, "value")
 		}
+		delete(out, "value")
 	}
 
 	// Compound fields convert CSV strings into {"custom": [...], "object": []}
@@ -491,7 +509,14 @@ func preparePayload(spec ResourceSpec, input map[string]any, applyDefaults bool)
 	}
 
 	if spec.Key == "time-objects" {
-		if _, hasGV := out["group_value"]; !hasGV {
+		hasAnyTimeField := false
+		for _, k := range []string{"type", "weekdays", "start_time", "end_time", "val_comment"} {
+			if _, ok := out[k]; ok {
+				hasAnyTimeField = true
+				break
+			}
+		}
+		if _, hasGV := out["group_value"]; !hasGV && (applyDefaults || hasAnyTimeField) {
 			tVal := strOr(out["type"], "weekly")
 			weekdays := strOr(out["weekdays"], "1234567")
 			startTime := strOr(out["start_time"], "00:00")
@@ -508,7 +533,7 @@ func preparePayload(spec ResourceSpec, input map[string]any, applyDefaults bool)
 			}
 			out["group_value"] = []any{item}
 		}
-		for _, tmpKey := range []string{"type", "weekdays", "start_time", "end_time", "val_comment"} {
+		for _, tmpKey := range []string{"type", "weekdays", "start_time", "end_time", "val_comment", "value"} {
 			delete(out, tmpKey)
 		}
 	}
@@ -816,6 +841,12 @@ func buildMergedUpdateBody(spec ResourceSpec, id string, rawInput, updates, exis
 			if strings.HasSuffix(k, "_int") {
 				continue
 			}
+			if (spec.ObjectValueKey != "" || spec.Key == "time-objects") && k == "value" {
+				continue
+			}
+			if spec.Key == "time-objects" && (k == "type" || k == "weekdays" || k == "start_time" || k == "end_time" || k == "val_comment") {
+				continue
+			}
 			merged[k] = v
 		}
 	}
@@ -847,8 +878,33 @@ func buildMergedUpdateBody(spec ResourceSpec, id string, rawInput, updates, exis
 	if spec.Key == "time-objects" {
 		if _, explicitGV := rawInput["group_value"]; !explicitGV {
 			if mergedGV, okM := merged["group_value"].([]any); okM && len(mergedGV) == 1 {
-				if exGV, okE := existing["group_value"].([]any); okE && len(exGV) > 1 {
-					merged["group_value"] = append(mergedGV, exGV[1:]...)
+				if exGV, okE := existing["group_value"].([]any); okE && len(exGV) > 0 {
+					if firstMerged, okFM := mergedGV[0].(map[string]any); okFM {
+						if firstEx, okFE := exGV[0].(map[string]any); okFE {
+							if _, has := rawInput["type"]; !has && firstEx["type"] != nil {
+								firstMerged["type"] = firstEx["type"]
+							}
+							if _, has := rawInput["start_time"]; !has && firstEx["start_time"] != nil {
+								firstMerged["start_time"] = firstEx["start_time"]
+							}
+							if _, has := rawInput["end_time"]; !has && firstEx["end_time"] != nil {
+								firstMerged["end_time"] = firstEx["end_time"]
+							}
+							if _, has := rawInput["val_comment"]; !has && firstEx["comment"] != nil {
+								firstMerged["comment"] = firstEx["comment"]
+							}
+							if strOr(firstMerged["type"], "weekly") == "weekly" {
+								if _, has := rawInput["weekdays"]; !has && firstEx["weekdays"] != nil {
+									firstMerged["weekdays"] = firstEx["weekdays"]
+								}
+							} else {
+								delete(firstMerged, "weekdays")
+							}
+						}
+					}
+					if len(exGV) > 1 {
+						merged["group_value"] = append(mergedGV, exGV[1:]...)
+					}
 				}
 			}
 		}
@@ -925,6 +981,107 @@ func applyResourceUpdateInvariants(spec ResourceSpec, merged map[string]any) {
 			merged["is_ipv6"] = 1
 		} else {
 			merged["is_ipv6"] = 0
+		}
+	case "vrrp-config":
+		fillMissingDefaults(merged, map[string]any{
+			"enabled":          "no",
+			"type":             1,
+			"prio":             150,
+			"method":           0,
+			"domain":           "www.baidu.com",
+			"dns":              "223.5.5.5",
+			"gateway":          "www.baidu.com",
+			"interval":         3,
+			"ifnames":          "",
+			"auto_sync":        0,
+			"single_line":      0,
+			"ignore_wanstatus": 1,
+			"interfaces":       "",
+			"virtual_ips":      "",
+			"ht_iface":         "",
+			"remote_addr":      "",
+		})
+	case "backup-auto":
+		if strOr(merged["time"], "") == "" {
+			merged["time"] = "23:59"
+		}
+		if strOr(merged["cycle_time"], "") == "" {
+			switch strOr(merged["strategy"], "week") {
+			case "week":
+				merged["cycle_time"] = "7"
+			case "month":
+				merged["cycle_time"] = "1"
+			default:
+				merged["cycle_time"] = "2026-12-31"
+			}
+		}
+	}
+}
+
+func encodeIKuaiPEM(raw string) string {
+	if !strings.Contains(raw, "-----BEGIN") {
+		return raw
+	}
+	s := strings.ReplaceAll(raw, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	if strings.Contains(s, "@") {
+		s = strings.ReplaceAll(s, "@", "\n")
+	}
+	rawLines := strings.Split(s, "\n")
+	lines := make([]string, 0, len(rawLines))
+	for _, line := range rawLines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "-----BEGIN") || strings.HasPrefix(trimmed, "-----END") {
+			normalized := strings.Join(strings.Fields(strings.ReplaceAll(trimmed, "#", " ")), "#")
+			lines = append(lines, normalized)
+			continue
+		}
+		cleaned := strings.Map(func(r rune) rune {
+			if r == ' ' || r == '\t' {
+				return -1
+			}
+			return r
+		}, trimmed)
+		if cleaned != "" {
+			lines = append(lines, cleaned)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "@")
+}
+
+func decodeIKuaiPEM(raw string) string {
+	if !strings.Contains(raw, "-----BEGIN") || !strings.Contains(raw, "@") {
+		return raw
+	}
+	parts := strings.Split(raw, "@")
+	lines := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "-----BEGIN") || strings.HasPrefix(trimmed, "-----END") {
+			lines = append(lines, strings.ReplaceAll(trimmed, "#", " "))
+		} else {
+			lines = append(lines, trimmed)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func decodeIKuaiPEMFields(obj map[string]any) {
+	if obj == nil {
+		return
+	}
+	for _, k := range pemCertificateFields {
+		if s, ok := obj[k].(string); ok && s != "" {
+			obj[k] = decodeIKuaiPEM(s)
 		}
 	}
 }

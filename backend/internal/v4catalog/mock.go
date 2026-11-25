@@ -138,7 +138,13 @@ func ensureMockStore() {
 		"port-objects":   {{"id": 1, "group_name": "web_ports", "group_value": []any{map[string]any{"port": "80,443"}}, "value": "80,443", "comment": "Web 标准端口"}},
 		"domain-objects": {},
 		"proto-objects":  {{"id": 1, "group_name": "web_protos", "group_value": []any{map[string]any{"proto": "tcp"}, map[string]any{"proto": "udp"}}, "value": "tcp,udp", "comment": "基础传输协议"}},
-		"time-objects":   {{"id": 1, "group_name": "work_hours", "type": "weekly", "weekdays": "12345", "start_time": "09:00", "end_time": "18:00", "value": "weekly 12345 09:00~18:00", "comment": "工作日办公时段"}},
+		"time-objects": {
+			{
+				"id": 1, "group_name": "work_hours",
+				"group_value": []any{map[string]any{"type": "weekly", "weekdays": "12345", "start_time": "09:00", "end_time": "18:00", "comment": ""}},
+				"type":        "weekly", "weekdays": "12345", "start_time": "09:00", "end_time": "18:00", "value": "weekly 12345 09:00~18:00", "comment": "工作日办公时段",
+			},
+		},
 		"log-system": {
 			{"id": 1, "timestamp": now - 120, "content": "系统运行正常：v4.0 API Token 服务就绪"},
 			{"id": 2, "timestamp": now - 600, "content": "WAN1 链路检测通过 (RTT 4.4ms)"},
@@ -206,21 +212,30 @@ var mockWGPeers = map[string][]map[string]any{
 	},
 }
 
+func cloneAndDecodeMockRow(src map[string]any) map[string]any {
+	if src == nil {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(src))
+	for k, v := range src {
+		cloned[k] = v
+	}
+	decodeIKuaiPEMFields(cloned)
+	return cloned
+}
+
 func mockListOrGet(spec ResourceSpec, page, pageSize int, search string, extraQuery ...map[string]string) *ListResult {
 	mockMu.Lock()
 	defer mockMu.Unlock()
 	ensureMockStore()
 
 	if spec.Kind == "singleton" {
-		cfg := mockSingletons[spec.Key]
-		if cfg == nil {
-			cfg = map[string]any{}
-		}
+		cloned := cloneAndDecodeMockRow(mockSingletons[spec.Key])
 		return &ListResult{
 			Resource: spec,
-			Rows:     []map[string]any{cfg},
+			Rows:     []map[string]any{cloned},
 			Total:    1,
-			Config:   cfg,
+			Config:   cloned,
 		}
 	}
 
@@ -228,9 +243,10 @@ func mockListOrGet(spec ResourceSpec, page, pageSize int, search string, extraQu
 	filtered := make([]map[string]any, 0, len(rows))
 	needle := strings.ToLower(strings.TrimSpace(search))
 	for _, row := range rows {
+		cloned := cloneAndDecodeMockRow(row)
 		if needle != "" {
 			matched := false
-			for _, v := range row {
+			for _, v := range cloned {
 				if strings.Contains(strings.ToLower(fmt.Sprint(v)), needle) {
 					matched = true
 					break
@@ -240,7 +256,7 @@ func mockListOrGet(spec ResourceSpec, page, pageSize int, search string, extraQu
 				continue
 			}
 		}
-		filtered = append(filtered, row)
+		filtered = append(filtered, cloned)
 	}
 
 	return &ListResult{
@@ -368,14 +384,21 @@ func mockDelete(spec ResourceSpec, id string) map[string]any {
 }
 
 func formatMockObjValue(raw any, key string) string {
-	arr, ok := raw.([]map[string]any)
-	if !ok {
-		return ""
-	}
-	vals := make([]string, 0, len(arr))
-	for _, item := range arr {
-		if v, exists := item[key]; exists {
-			vals = append(vals, fmt.Sprint(v))
+	vals := make([]string, 0, 4)
+	switch arr := raw.(type) {
+	case []map[string]any:
+		for _, item := range arr {
+			if v := strOr(item[key], strOr(item["value"], "")); v != "" {
+				vals = append(vals, v)
+			}
+		}
+	case []any:
+		for _, rawItem := range arr {
+			if item, ok := rawItem.(map[string]any); ok {
+				if v := strOr(item[key], strOr(item["value"], "")); v != "" {
+					vals = append(vals, v)
+				}
+			}
 		}
 	}
 	return strings.Join(vals, ",")

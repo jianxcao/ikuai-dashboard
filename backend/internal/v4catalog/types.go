@@ -50,7 +50,7 @@ type ResourceSpec struct {
 	Actions        []ActionSpec   `json:"actions,omitempty"`
 	SearchKeys     string         `json:"-"`
 	CompoundFields []string       `json:"-"`
-	ObjectValueKey string         `json:"-"`
+	ObjectValueKey string         `json:"object_value_key,omitempty"`
 	DeleteMode     string         `json:"delete_mode,omitempty"` // id (default) | clear | srcfile
 	Defaults       map[string]any `json:"-"`
 	UpdateFields   []string       `json:"-"`
