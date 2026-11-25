@@ -12,7 +12,6 @@
     >
       <span class="swatch-card" :style="{ background: item.previewBg }">
         <i :style="{ background: item.swatchPrimary }" />
-        <i :style="{ background: item.swatchSecondary }" />
       </span>
       <span class="theme-name">{{ item.label }}</span>
     </button>
@@ -28,7 +27,6 @@
     >
       <span class="swatch-card" :style="{ background: currentThemeMeta.previewBg }">
         <i :style="{ background: currentThemeMeta.swatchPrimary }" />
-        <i :style="{ background: currentThemeMeta.swatchSecondary }" />
       </span>
       <span class="trigger-label">{{ currentThemeMeta.label }}</span>
       <ChevronDown :size="14" class="chevron" :class="{ rotated: open }" />
@@ -39,9 +37,9 @@
         <div class="pop-head">
           <div>
             <strong>视觉主题系统</strong>
-            <span>6 套独立美学（支持苹果液态玻璃与高对比工作室）</span>
+            <span>6 套克制设计体系（含苹果光学液态玻璃与平面工作室）</span>
           </div>
-          <Sparkles :size="15" class="pop-ic" />
+          <Layers :size="15" class="pop-ic" />
         </div>
 
         <div class="pop-list">
@@ -59,14 +57,14 @@
                 :class="{ glass: item.isGlass, dark: item.isDark }"
               >
                 <b :style="{ background: item.swatchPrimary }" />
-                <em :style="{ background: item.swatchSecondary }" />
+                <em />
               </span>
             </div>
 
             <div class="pop-meta">
               <div class="pop-title-row">
                 <strong>{{ item.label }}</strong>
-                <span class="v4-badge" :class="item.isGlass ? 'v4-badge-accent' : ''">{{ item.tag }}</span>
+                <span class="v4-badge">{{ item.tag }}</span>
               </div>
               <span class="pop-desc">{{ item.description }}</span>
             </div>
@@ -81,7 +79,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { Check, ChevronDown, Sparkles } from 'lucide-vue-next'
+import { Check, ChevronDown, Layers } from 'lucide-vue-next'
 import { useTheme, type AppTheme } from '@/composables/useTheme'
 
 withDefaults(
@@ -130,7 +128,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui);
 }
 
 .theme-pill:hover {
@@ -140,19 +138,22 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 }
 
 .theme-pill.active {
-  color: var(--text-strong);
+  color: var(--rail-active-fg);
   border-color: var(--accent-primary);
-  background: var(--accent-primary-soft);
+  background: var(--rail-active-bg);
+  box-shadow: var(--rail-active-shadow);
 }
 
 .swatch-card {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 4px 6px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.7);
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border-control);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
 }
 
 .swatch-card i {
@@ -170,7 +171,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 38px;
+  min-height: 36px;
   padding: 0 11px 0 8px;
   border-radius: var(--radius-control);
   border: 1px solid var(--border-control);
@@ -180,7 +181,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   font-weight: 600;
   cursor: pointer;
   box-shadow: var(--inner-sheen);
-  transition: all 0.16s ease;
+  transition: border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui);
 }
 
 .theme-trigger:hover {
@@ -194,7 +195,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 
 .chevron {
   color: var(--text-muted);
-  transition: transform 0.18s ease;
+  transition: transform 0.18s var(--ease-ui);
 }
 
 .chevron.rotated {
@@ -208,7 +209,10 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   width: min(410px, calc(100vw - 24px));
   padding: 14px;
   background: var(--surface-popover);
-  border: 1px solid var(--border-control);
+  border: 1px solid var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
+  -webkit-backdrop-filter: var(--backdrop-chrome);
+  backdrop-filter: var(--backdrop-chrome);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -220,7 +224,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   align-items: center;
   justify-content: space-between;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
 }
 
 .pop-head > div > strong {
@@ -237,7 +241,7 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 }
 
 .pop-ic {
-  color: var(--accent-text);
+  color: var(--text-muted);
 }
 
 .pop-list {
@@ -255,74 +259,85 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   width: 100%;
   padding: 8px 10px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   background: var(--surface-input);
   text-align: left;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui), box-shadow 0.14s var(--ease-ui);
 }
 
 .pop-item:hover {
-  border-color: var(--border-strong);
+  border-color: var(--border-control);
   background: var(--surface-hover);
 }
 
 .pop-item.active {
   border-color: var(--accent-primary);
-  background: var(--accent-primary-soft);
+  background: var(--rail-active-bg);
+  box-shadow: var(--rail-active-shadow);
 }
 
 .mini-ui {
-  width: 48px;
+  width: 50px;
   height: 36px;
   padding: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.28);
 }
 
 .mini-glass {
   width: 100%;
   height: 100%;
-  border-radius: 6px;
-  padding: 3px;
-  background: rgba(255, 255, 255, 0.85);
+  border-radius: 7px;
+  padding: 4px 5px;
+  background: rgba(255, 255, 255, 0.92);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .mini-glass.dark {
-  background: rgba(18, 22, 34, 0.85);
+  background: rgba(20, 24, 34, 0.92);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .mini-glass.glass {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 0.5px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
 .mini-glass.glass.dark {
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .mini-glass b,
 .mini-glass em {
   display: block;
-  height: 7px;
+  height: 4px;
   border-radius: 999px;
 }
 
 .mini-glass b {
-  width: 14px;
+  width: 18px;
 }
 
 .mini-glass em {
-  width: 8px;
+  width: 26px;
+  background: rgba(100, 116, 139, 0.34);
+}
+
+.mini-glass.dark em {
+  background: rgba(148, 163, 184, 0.28);
 }
 
 .pop-meta {

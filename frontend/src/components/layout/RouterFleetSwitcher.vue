@@ -180,7 +180,7 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-height: 38px;
+  min-height: 36px;
   padding: 4px 12px;
   border-radius: var(--radius-control);
   border: 1px solid var(--border-control);
@@ -188,7 +188,7 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
   color: var(--text-strong);
   box-shadow: var(--inner-sheen);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui);
   max-width: min(280px, 100%);
   min-width: 0;
 }
@@ -233,20 +233,20 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
 }
 .status-led.up {
   background: var(--status-up);
-  box-shadow: 0 0 10px var(--status-up);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-up) 55%, transparent);
 }
 .status-led.warn {
   background: var(--status-warn);
-  box-shadow: 0 0 10px var(--status-warn);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-warn) 55%, transparent);
 }
 .status-led.down {
   background: var(--status-down);
-  box-shadow: 0 0 10px var(--status-down);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-down) 55%, transparent);
 }
 
 .chevron {
   color: var(--text-muted);
-  transition: transform 0.2s ease;
+  transition: transform 0.2s var(--ease-ui);
   flex-shrink: 0;
 }
 .chevron.rotated {
@@ -261,9 +261,10 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
   padding: 14px;
   z-index: 220;
   background: var(--surface-popover);
-  border: 1px solid var(--border-control);
-  -webkit-backdrop-filter: var(--backdrop-glass);
-  backdrop-filter: var(--backdrop-glass);
+  border: 1px solid var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
+  -webkit-backdrop-filter: var(--backdrop-chrome);
+  backdrop-filter: var(--backdrop-chrome);
 }
 
 .popover-head {
@@ -272,7 +273,7 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
   justify-content: space-between;
   gap: 10px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
 }
 
 .popover-head > div:first-child > strong {
@@ -318,24 +319,25 @@ onUnmounted(() => document.removeEventListener('click', handleDocClick))
   text-align: left;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   background: var(--surface-input);
   color: var(--text-strong);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: all 0.16s ease;
+  transition: border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui), box-shadow 0.14s var(--ease-ui);
 }
 
 .fleet-item:hover {
-  border-color: var(--border-strong);
+  border-color: var(--border-control);
   background: var(--surface-hover);
 }
 
 .fleet-item.active {
   border-color: var(--accent-primary);
-  background: var(--accent-primary-soft);
+  background: var(--rail-active-bg);
+  box-shadow: var(--rail-active-shadow);
 }
 
 .item-top {

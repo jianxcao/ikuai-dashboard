@@ -86,7 +86,12 @@
         <div class="field-grid">
           <label class="field">
             <span>节点 ID</span>
-            <input v-model.trim="router.id" class="v4-input font-mono" placeholder="hq-v4" />
+            <input
+              v-model="router.id"
+              class="v4-input font-mono"
+              placeholder="hq-v4"
+              @blur="router.id = router.id.trim()"
+            />
           </label>
           <label class="field">
             <span>节点名称</span>
@@ -167,10 +172,10 @@
     <section class="v4-card studio-section">
       <div class="section-head">
         <div>
-          <h2>多主题视觉工坊 · 苹果液态玻璃领衔</h2>
-          <p>6 套独立设计体系（包含真实折射边框的 Apple Liquid Glass 与高对比 Studio 平面风），点击即刻切换并持久化。</p>
+          <h2>视觉主题与外观系统</h2>
+          <p>6 套克制设计体系（含苹果光学液态玻璃与高对比工作室风格），点击即刻切换并持久化。</p>
         </div>
-        <span class="v4-badge v4-badge-accent">{{ themes.length }} 套专属主题</span>
+        <span class="v4-badge">{{ themes.length }} 套主题</span>
       </div>
 
       <div class="theme-gallery">
@@ -185,20 +190,19 @@
           <div class="theme-preview" :style="{ background: item.previewBg, borderRadius: item.cornerRadius }">
             <div class="preview-glass-card" :class="{ glass: item.isGlass, dark: item.isDark }">
               <div class="preview-bar">
-                <span :style="{ background: item.swatchPrimary }" />
-                <span :style="{ background: item.swatchSecondary }" />
-                <em v-if="item.isGlass" class="glass-chip">Glass</em>
+                <i class="mock-pill" :style="{ background: item.swatchPrimary }" />
+                <em v-if="item.isGlass" class="glass-chip">Liquid Glass</em>
               </div>
               <div class="preview-lines">
-                <i :style="{ background: item.swatchPrimary, opacity: 0.85 }" />
-                <i :style="{ background: item.swatchSecondary, opacity: 0.6 }" />
+                <i class="line-strong" />
+                <i class="line-soft" />
               </div>
             </div>
           </div>
           <div class="theme-meta">
             <div class="theme-title">
               <strong>{{ item.label }}</strong>
-              <span class="v4-badge" :class="item.isGlass ? 'v4-badge-accent' : ''">{{ item.tag }}</span>
+              <span class="v4-badge">{{ item.tag }}</span>
             </div>
             <span class="theme-en font-mono">{{ item.englishName }}</span>
             <p>{{ item.description }}</p>
@@ -218,7 +222,6 @@
           <button
             type="button"
             class="v4-btn"
-            :class="readOnly ? '' : 'v4-btn-primary'"
             :disabled="serverReadOnly"
             @click="toggleSafetyLock"
           >
@@ -323,10 +326,11 @@ const copiedDash = ref(false)
 watch(
   config,
   (cfg) => {
+    const existingUids = new Map(draftRouters.value.map((d) => [d.original_id || d.id, d._uid]))
     for (const k of Object.keys(testResults)) delete testResults[k]
     for (const k of Object.keys(tokenVisible)) delete tokenVisible[k]
     draftRouters.value = cfg.routers.map((r) => ({
-      _uid: nextUid(),
+      _uid: existingUids.get(r.id) ?? nextUid(),
       original_id: r.id,
       id: r.id,
       name: r.name,
@@ -466,19 +470,25 @@ async function handleCopyDashToken() {
 <style scoped>
 .fleet-studio-page { display: flex; flex-direction: column; gap: 16px; }
 .ws-head { padding: 18px 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
-.ws-eyebrow { font-size: 11px; font-weight: 700; color: var(--accent-text); letter-spacing: 0.08em; }
-.ws-head h1 { margin: 4px 0 0; font-size: 22px; font-weight: 800; }
+.ws-eyebrow { font-size: 11px; font-weight: 600; color: var(--text-faint); letter-spacing: 0.06em; }
+.ws-head h1 { margin: 4px 0 0; font-size: 21px; font-weight: 800; }
 .ws-head p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
 .head-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-.toast-banner { padding: 10px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--status-up) 45%, transparent); background: var(--status-up-soft); color: var(--status-up); font-size: 13px; font-weight: 600; }
+.toast-banner { padding: 10px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--status-up) 38%, transparent); background: var(--status-up-soft); color: var(--status-up); font-size: 13px; font-weight: 600; }
 .empty-fleet { padding: 42px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
-.empty-ic { color: var(--accent-text); }
+.empty-ic { color: var(--text-muted); }
 .empty-fleet p { margin: 0 0 8px; color: var(--text-muted); font-size: 13px; }
 
 .router-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: 14px; }
 .router-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.router-card.active { border-color: var(--accent-primary); }
+.router-card.active {
+  border-color: color-mix(in srgb, var(--accent-primary) 42%, var(--chrome-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-primary) 20%, transparent),
+    var(--shadow-elevated),
+    var(--inner-sheen);
+}
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .head-left, .head-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
@@ -512,37 +522,42 @@ async function handleCopyDashToken() {
 .section-head p { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
 
 .theme-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
-.theme-card { padding: 11px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); background: var(--surface-input); text-align: left; color: var(--text-strong); cursor: pointer; display: flex; flex-direction: column; gap: 10px; transition: all 0.16s ease; }
-.theme-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
-.theme-card.selected { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.theme-card { padding: 11px; border-radius: var(--radius-lg); border: 1px solid var(--divider-line); background: var(--surface-input); text-align: left; color: var(--text-strong); cursor: pointer; display: flex; flex-direction: column; gap: 10px; transition: border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui), box-shadow 0.14s var(--ease-ui); }
+.theme-card:hover { border-color: var(--border-control); background: var(--surface-hover); }
+.theme-card.selected { border-color: var(--accent-primary); background: var(--rail-active-bg); box-shadow: var(--rail-active-shadow); }
 
-.theme-preview { height: 84px; padding: 10px; border: 1px solid rgba(148, 163, 184, 0.3); display: flex; align-items: stretch; }
+.theme-preview { height: 84px; padding: 10px; border: 1px solid var(--divider-line); display: flex; align-items: stretch; }
 .preview-glass-card {
-  width: 100%; padding: 9px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.9);
+  width: 100%; padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.94);
   display: flex; flex-direction: column; justify-content: space-between;
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid rgba(15, 23, 42, 0.08);
 }
-.preview-glass-card.dark { background: rgba(18, 22, 34, 0.92); color: #f8fafc; }
+.preview-glass-card.dark { background: rgba(18, 22, 30, 0.94); border-color: rgba(255, 255, 255, 0.10); color: #f8fafc; }
 .preview-glass-card.glass {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.36));
-  backdrop-filter: blur(12px);
-  border-color: rgba(255, 255, 255, 0.78);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.70), rgba(255, 255, 255, 0.44));
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-color: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 0.5px rgba(15, 23, 42, 0.08), inset 0 1px 0.5px rgba(255, 255, 255, 0.96);
 }
 .preview-glass-card.glass.dark {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.32);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06));
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.45), inset 0 1px 0.5px rgba(255, 255, 255, 0.22);
 }
-.preview-bar { display: flex; align-items: center; gap: 6px; }
-.preview-bar span { width: 14px; height: 14px; border-radius: 50%; display: block; }
-.glass-chip { margin-left: auto; font-style: normal; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.45); color: #0b1526; }
-.preview-glass-card.glass.dark .glass-chip { background: rgba(255, 255, 255, 0.2); color: #f8fafc; }
-.preview-lines { display: flex; flex-direction: column; gap: 5px; }
-.preview-lines i { height: 6px; border-radius: 999px; display: block; }
+.preview-bar { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.mock-pill { width: 26px; height: 8px; border-radius: 999px; display: block; }
+.glass-chip { margin-left: auto; font-style: normal; font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.55); color: #0f172a; border: 1px solid rgba(255, 255, 255, 0.72); }
+.preview-glass-card.glass.dark .glass-chip { background: rgba(255, 255, 255, 0.14); color: #f6f9ff; border-color: rgba(255, 255, 255, 0.20); }
+.preview-lines { display: flex; flex-direction: column; gap: 6px; }
+.preview-lines i { height: 5px; border-radius: 999px; display: block; }
+.preview-lines .line-strong { width: 68%; background: rgba(15, 23, 42, 0.24); }
+.preview-lines .line-soft { width: 44%; background: rgba(15, 23, 42, 0.13); }
+.preview-glass-card.dark .preview-lines .line-strong { background: rgba(255, 255, 255, 0.30); }
+.preview-glass-card.dark .preview-lines .line-soft { background: rgba(255, 255, 255, 0.14); }
 
-.theme-title { display: flex; justify-content: space-between; align-items: center; }
-.theme-en { font-size: 11px; color: var(--accent-text); }
+.theme-title { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.theme-en { font-size: 11px; color: var(--text-faint); }
 .theme-meta p { margin: 5px 0 0; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
 
 .spin { animation: spin 0.9s linear infinite; }

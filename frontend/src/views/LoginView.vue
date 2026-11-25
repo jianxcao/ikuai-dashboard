@@ -1,7 +1,6 @@
 <template>
   <div class="login-stage">
     <div class="login-orb orb-1" aria-hidden="true" />
-    <div class="login-orb orb-2" aria-hidden="true" />
 
     <main class="login-shell v4-panel">
       <!-- Showcase / Theme Preview Side -->
@@ -21,8 +20,8 @@
         </p>
 
         <div class="feature-chips">
-          <span class="v4-badge v4-badge-accent">苹果液态玻璃 & 6 套主题</span>
-          <span class="v4-badge v4-badge-up">全模块可写管理</span>
+          <span class="v4-badge">光学液态玻璃 & 6 套主题</span>
+          <span class="v4-badge">全模块控制</span>
           <span class="v4-badge" :class="serverReadOnly ? 'v4-badge-warn' : ''">
             {{ serverReadOnly ? '服务端只读保护已开启' : '支持只读模式 / Dry-Run' }}
           </span>
@@ -163,26 +162,18 @@ async function handleLogin() {
 .login-orb {
   position: fixed;
   border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.42;
+  filter: blur(90px);
+  opacity: 0.25;
   pointer-events: none;
   z-index: -1;
 }
 
 .orb-1 {
-  width: 420px;
-  height: 420px;
-  top: -80px;
-  left: -60px;
+  width: 460px;
+  height: 460px;
+  top: -120px;
+  left: -80px;
   background: var(--accent-primary-soft);
-}
-
-.orb-2 {
-  width: 380px;
-  height: 380px;
-  bottom: -80px;
-  right: -60px;
-  background: var(--accent-secondary-soft);
 }
 
 .login-shell {
@@ -229,9 +220,9 @@ async function handleLogin() {
 
 .eyebrow {
   font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-text);
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--text-faint);
+  letter-spacing: 0.06em;
 }
 
 .brand-top h1 {
@@ -259,7 +250,7 @@ async function handleLogin() {
   flex-direction: column;
   gap: 10px;
   padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--divider-line);
 }
 
 .showcase-label {
@@ -350,14 +341,14 @@ async function handleLogin() {
   font-size: 12px;
   color: var(--text-muted);
   padding-top: 10px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--divider-line);
 }
 
 .form-foot code {
   padding: 2px 6px;
   border-radius: 6px;
   background: var(--surface-input);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   color: var(--text-strong);
 }
 
