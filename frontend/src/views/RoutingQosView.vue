@@ -1,5 +1,6 @@
 <template>
   <CatalogWorkspace
+    routeTab="routing"
     eyebrow="ROUTING & QOS SHUNTING"
     title="多线分流路由与 QoS 流控"
     subtitle="全面管理静态路由、域名分流、五元组分流、L7 协议分流、多 WAN 负载均衡、上下行分离及 IP/MAC 限速。"

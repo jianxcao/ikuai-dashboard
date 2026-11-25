@@ -1,5 +1,6 @@
 <template>
   <CatalogWorkspace
+    routeTab="logs"
     eyebrow="AUDIT & SYSTEM LOGS"
     title="日志审计中心"
     subtitle="支持 10 类爱快 V4 运行与安全日志检索、自动转换可读本地时间并支持确认清空。"

@@ -1,5 +1,6 @@
 <template>
   <CatalogWorkspace
+    routeTab="network"
     eyebrow="NETWORK & INTERFACES"
     title="网络与接口管理"
     subtitle="覆盖 WAN/LAN/物理网卡、DHCP 地址池/静态绑定/准入控制、DNS 与代理分流、VLAN 及 NAT/DNAT/DMZ。"

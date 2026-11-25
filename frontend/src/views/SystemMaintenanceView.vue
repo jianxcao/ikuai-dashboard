@@ -1,5 +1,6 @@
 <template>
   <CatalogWorkspace
+    routeTab="system"
     eyebrow="SYSTEM & ADVANCED SERVICES"
     title="系统维护与高级服务"
     subtitle="管理主机名与 NTP、SSH/HTTPS 远程访问、BBR 内核调优、CPU 调度、ALG、VRRP、配置备份/自动备份、文件浏览、权限账号及 FTP/HTTP/Samba/SNMPD。"

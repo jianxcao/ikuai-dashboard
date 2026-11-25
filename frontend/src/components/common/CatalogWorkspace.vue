@@ -20,7 +20,7 @@
         class="subtab-pill"
         :class="{ active: activeKey === tab.key }"
         :aria-selected="activeKey === tab.key"
-        @click="activeKey = tab.key"
+        @click="selectSubTab(tab.key)"
       >
         <span v-if="tab.groupLabel" class="group-tag">{{ tab.groupLabel }}</span>
         <span>{{ tab.label }}</span>
@@ -37,9 +37,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import ResourceCollectionPanel from './ResourceCollectionPanel.vue'
 import SingletonConfigPanel from './SingletonConfigPanel.vue'
+import { useAppRoute } from '@/composables/useAppRoute'
 import { useCatalog } from '@/composables/useCatalog'
 
 export interface WorkspaceTab {
@@ -54,13 +55,30 @@ const props = defineProps<{
   title: string
   subtitle: string
   tabs: WorkspaceTab[]
+  routeTab?: string
   initialSubResource?: string
   navSeq?: number
 }>()
 
+const { currentTab, syncSubTab } = useAppRoute()
+const ownerTab = props.routeTab || currentTab.value
 const { getSpec } = useCatalog()
-const activeKey = ref(props.tabs[0]?.key || '')
+const initialValid =
+  props.initialSubResource && props.tabs.some((t) => t.key === props.initialSubResource)
+    ? props.initialSubResource
+    : props.tabs[0]?.key || ''
+const activeKey = ref(initialValid)
 const subtabBarEl = ref<HTMLElement | null>(null)
+
+if (currentTab.value === ownerTab && activeKey.value && !props.initialSubResource) {
+  syncSubTab(ownerTab, activeKey.value, { replace: true })
+}
+
+function selectSubTab(key: string) {
+  if (!props.tabs.some((t) => t.key === key)) return
+  activeKey.value = key
+  syncSubTab(ownerTab, key, { replace: false })
+}
 
 watch(activeKey, async () => {
   await nextTick()
@@ -71,21 +89,27 @@ watch(activeKey, async () => {
 watch(
   () => [props.initialSubResource, props.navSeq] as const,
   ([next]) => {
+    if (currentTab.value !== ownerTab) return
     if (next && props.tabs.some((t) => t.key === next)) {
       activeKey.value = next
+    } else if (!next && activeKey.value) {
+      syncSubTab(ownerTab, activeKey.value, { replace: true })
     }
-  },
-  { immediate: true }
+  }
 )
+
+onActivated(() => {
+  if (currentTab.value === ownerTab && !props.initialSubResource && activeKey.value) {
+    syncSubTab(ownerTab, activeKey.value, { replace: true })
+  }
+})
 
 const activeTab = computed(() => props.tabs.find((t) => t.key === activeKey.value))
 const activeSpec = computed(() => getSpec(activeKey.value))
 
 defineExpose({
   setTab(key: string) {
-    if (props.tabs.some((t) => t.key === key)) {
-      activeKey.value = key
-    }
+    selectSubTab(key)
   },
 })
 </script>
@@ -108,15 +132,15 @@ defineExpose({
 
 .ws-eyebrow {
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--accent-text);
+  color: var(--text-faint);
 }
 
 .ws-head h1 {
   margin: 4px 0 0;
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 800;
   color: var(--text-strong);
 }
@@ -130,59 +154,53 @@ defineExpose({
 .subtab-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 6px;
+  gap: 4px;
+  padding: 5px;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-input);
-  box-shadow: var(--inner-sheen);
+  border: 1px solid var(--seg-track-border);
+  background: var(--seg-track-bg);
 }
 
 .subtab-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
-  padding: 0 13px;
+  min-height: 32px;
+  padding: 0 12px;
   border-radius: var(--radius-control);
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-normal);
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui), box-shadow 0.14s var(--ease-ui);
 }
 
 .subtab-pill:hover {
   color: var(--text-strong);
-  background: var(--surface-hover);
 }
 
 .subtab-pill.active {
-  color: var(--btn-primary-fg);
-  border-color: var(--btn-primary-border);
-  background: var(--btn-primary-bg);
-  box-shadow: var(--btn-primary-shadow);
-}
-
-.subtab-pill.active > * {
-  color: var(--btn-primary-fg);
+  color: var(--seg-active-fg);
+  border-color: var(--seg-active-border);
+  background: var(--seg-active-bg);
+  box-shadow: var(--seg-active-shadow);
 }
 
 .group-tag {
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--surface-input);
-  border: 1px solid var(--border-control);
+  border: 1px solid var(--divider-line);
   font-size: 10px;
   color: var(--text-muted);
 }
 
 .subtab-pill.active .group-tag {
-  background: rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.40);
-  color: var(--btn-primary-fg);
+  background: var(--accent-primary-soft);
+  border-color: transparent;
+  color: var(--accent-text);
 }
 
 @media (max-width: 768px) {

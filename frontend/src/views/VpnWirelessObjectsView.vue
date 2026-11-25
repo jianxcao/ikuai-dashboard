@@ -1,5 +1,6 @@
 <template>
   <CatalogWorkspace
+    routeTab="vpn-wireless"
     eyebrow="VPN · WIRELESS · OBJECT GROUPS"
     title="VPN 隧道 · 无线 AC · 策略对象库"
     subtitle="集中管理 WireGuard (+Peers)、IPSec、OpenVPN/PPTP/L2TP/IKEv2 服务端与客户端、无线 AC/AP 与 7 类可复用策略对象组。"

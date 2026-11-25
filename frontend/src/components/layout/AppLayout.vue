@@ -1,7 +1,7 @@
 <template>
   <div class="console-shell">
     <!-- Desktop Left Navigation Rail -->
-    <aside class="side-rail v4-panel" aria-label="主导航">
+    <aside class="side-rail v4-panel v4-chrome" aria-label="主导航">
       <div class="brand-row">
         <img src="/ikuai-icon.svg" alt="iKuai V4" class="brand-icon" />
         <div class="brand-text">
@@ -9,33 +9,30 @@
             <strong>iKuai Console</strong>
             <span class="v4-pill font-mono">V4.0</span>
           </div>
-          <span class="brand-sub">Multi-Router · Multi-Theme</span>
+          <span class="brand-sub">Multi-Router · Control Plane</span>
         </div>
       </div>
 
       <div class="rail-groups">
         <div v-for="group in navGroups" :key="group.title" class="rail-group">
           <p class="rail-group-title">{{ group.title }}</p>
-          <button
+          <a
             v-for="tab in group.items"
             :key="tab.id"
-            type="button"
+            :href="buildPath(tab.id)"
             class="rail-item"
             :class="{ active: currentTab === tab.id }"
-            @click="selectTab(tab.id)"
+            @click.exact.prevent="selectTab(tab.id)"
           >
             <component :is="tab.icon" :size="16" />
             <span>{{ tab.label }}</span>
-          </button>
+          </a>
         </div>
       </div>
 
       <div class="rail-footer">
         <div class="rail-theme-info">
-          <span class="dot-pair">
-            <i :style="{ background: currentThemeMeta?.swatchPrimary }" />
-            <i :style="{ background: currentThemeMeta?.swatchSecondary }" />
-          </span>
+          <span class="theme-dot" :style="{ background: currentThemeMeta?.swatchPrimary }" />
           <span>{{ currentThemeMeta?.label }}</span>
         </div>
         <button
@@ -53,7 +50,7 @@
     <!-- Main Column -->
     <div class="workspace-col">
       <!-- Top Command Header -->
-      <header class="top-bar v4-panel">
+      <header class="top-bar v4-panel v4-chrome">
         <div class="top-left">
           <img src="/ikuai-icon.svg" alt="" class="mobile-logo" />
           <RouterFleetSwitcher @manage="selectTab('fleet')" />
@@ -124,10 +121,10 @@
 
       <!-- Active View -->
       <main class="main-stage">
-        <KeepAlive>
+        <KeepAlive :max="4">
           <component
             :is="currentComponent"
-            :initialSubResource="activeSubResource"
+            :initialSubResource="currentSub"
             :navSeq="navSeq"
             @navigate="handleNavigate"
           />
@@ -136,18 +133,18 @@
     </div>
 
     <!-- Mobile Bottom Navigation -->
-    <nav class="mobile-bottom v4-panel" aria-label="移动导航">
-      <button
+    <nav class="mobile-bottom v4-chrome" aria-label="移动导航">
+      <a
         v-for="tab in mobilePrimaryTabs"
         :key="tab.id"
-        type="button"
+        :href="buildPath(tab.id)"
         class="m-tab"
         :class="{ active: currentTab === tab.id }"
-        @click="selectTab(tab.id)"
+        @click.exact.prevent="selectTab(tab.id)"
       >
         <component :is="tab.icon" :size="18" />
         <span>{{ tab.shortLabel }}</span>
-      </button>
+      </a>
       <button
         type="button"
         class="m-tab"
@@ -164,7 +161,7 @@
       <div class="mobile-sheet v4-panel">
         <div class="sheet-head">
           <strong>全部 V4 模块与主题</strong>
-          <button type="button" class="v4-btn" @click="mobileMoreOpen = false">
+          <button type="button" class="v4-btn btn-xs" @click="mobileMoreOpen = false">
             <X :size="15" />
           </button>
         </div>
@@ -174,7 +171,7 @@
             :key="tab.id"
             type="button"
             class="v4-btn"
-            :class="{ 'v4-btn-primary': currentTab === tab.id }"
+            :class="{ 'sheet-active': currentTab === tab.id }"
             @click="selectTab(tab.id)"
           >
             <component :is="tab.icon" :size="15" />
@@ -182,7 +179,7 @@
           </button>
         </div>
         <div class="sheet-themes">
-          <span class="sheet-label">主题皮肤</span>
+          <span class="sheet-label">视觉主题</span>
           <ThemePicker />
         </div>
       </div>
@@ -219,10 +216,12 @@ import {
 import RouterFleetSwitcher from './RouterFleetSwitcher.vue'
 import ThemePicker from './ThemePicker.vue'
 import CommandPalette from './CommandPalette.vue'
-import OverviewView from '@/views/OverviewView.vue'
+import { useAppRoute } from '@/composables/useAppRoute'
 import { useAuth } from '@/composables/useAuth'
 import { useFleet } from '@/composables/useFleet'
 import { useTheme } from '@/composables/useTheme'
+
+const OverviewView = defineAsyncComponent(() => import('@/views/OverviewView.vue'))
 
 const TerminalsUsersView = defineAsyncComponent(() => import('@/views/TerminalsUsersView.vue'))
 const TrafficTopologyView = defineAsyncComponent(() => import('@/views/TrafficTopologyView.vue'))
@@ -280,9 +279,14 @@ const allTabs = navGroups.flatMap((g) => g.items)
 const mobilePrimaryTabs = allTabs.filter((t) => t.mobilePrimary)
 const paletteTabs = allTabs.map(({ id, label, desc }) => ({ id, label, desc }))
 
-const currentTab = ref('overview')
-const activeSubResource = ref<string | undefined>(undefined)
-const navSeq = ref(0)
+const {
+  currentTab,
+  currentSub,
+  navSeq,
+  startedExplicitNonOverview,
+  navigate: navigateRoute,
+  buildPath,
+} = useAppRoute()
 const paletteOpen = ref(false)
 const mobileMoreOpen = ref(false)
 
@@ -301,8 +305,8 @@ watch(
 watch(
   isUnconfigured,
   (unconfigured) => {
-    if (unconfigured) {
-      currentTab.value = 'fleet'
+    if (unconfigured && !startedExplicitNonOverview && currentTab.value === 'overview') {
+      navigateRoute('fleet', undefined, { replace: true })
     }
   },
   { immediate: true }
@@ -326,15 +330,12 @@ const viewMap: Record<string, unknown> = {
 const currentComponent = computed(() => viewMap[currentTab.value] ?? OverviewView)
 
 function selectTab(id: string) {
-  currentTab.value = id
-  activeSubResource.value = undefined
+  navigateRoute(id)
   mobileMoreOpen.value = false
 }
 
 function handleNavigate(payload: { tab: string; subResource?: string }) {
-  currentTab.value = payload.tab
-  activeSubResource.value = payload.subResource
-  navSeq.value += 1
+  navigateRoute(payload.tab, payload.subResource)
   mobileMoreOpen.value = false
 }
 
@@ -401,16 +402,16 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   padding: 2px 6px;
   border-radius: 6px;
   font-size: 10px;
-  font-weight: 800;
-  background: var(--accent-primary-soft);
-  color: var(--accent-text);
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 42%, transparent);
+  font-weight: 700;
+  background: var(--surface-input);
+  color: var(--text-muted);
+  border: 1px solid var(--divider-line);
 }
 
 .brand-sub {
   display: block;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-faint);
   margin-top: 2px;
 }
 
@@ -426,16 +427,14 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
 .rail-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .rail-group-title {
-  margin: 0 0 3px 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  margin: 0 0 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
 }
 
 .rail-item {
@@ -443,7 +442,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 38px;
+  min-height: 36px;
   padding: 0 12px;
   border-radius: var(--radius-control);
   border: 1px solid transparent;
@@ -451,9 +450,16 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   color: var(--text-normal);
   font-size: 13px;
   font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui), box-shadow 0.14s var(--ease-ui);
   text-align: left;
+}
+
+.rail-item > svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.14s var(--ease-ui);
 }
 
 .rail-item:hover {
@@ -462,19 +468,19 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
 }
 
 .rail-item.active {
-  color: var(--btn-primary-fg);
-  border-color: var(--btn-primary-border);
-  background: var(--btn-primary-bg);
-  box-shadow: var(--btn-primary-shadow);
+  color: var(--rail-active-fg);
+  border-color: var(--rail-active-border);
+  background: var(--rail-active-bg);
+  box-shadow: var(--rail-active-shadow);
 }
 
-.rail-item.active > * {
-  color: var(--btn-primary-fg);
+.rail-item.active > svg {
+  color: var(--rail-active-icon);
 }
 
 .rail-footer {
   padding-top: 12px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--divider-line);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -486,18 +492,14 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   gap: 8px;
   font-size: 12px;
   color: var(--text-muted);
-  padding: 0 4px;
+  padding: 0 6px;
 }
 
-.dot-pair {
-  display: inline-flex;
-  gap: 3px;
-}
-.dot-pair i {
+.theme-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  display: block;
+  flex-shrink: 0;
 }
 
 .logout-btn {
@@ -512,11 +514,11 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   padding: 14px 20px 32px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
 .top-bar {
-  padding: 10px 14px;
+  padding: 9px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -524,9 +526,6 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   position: sticky;
   top: 12px;
   z-index: 95;
-  background: var(--surface-chrome);
-  -webkit-backdrop-filter: var(--backdrop-chrome);
-  backdrop-filter: var(--backdrop-chrome);
 }
 
 .top-left {
@@ -567,7 +566,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   color: var(--text-normal);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui);
 }
 
 .cmd-trigger:hover {
@@ -579,22 +578,31 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 38px;
+  min-height: 36px;
   padding: 0 12px;
   border-radius: var(--radius-control);
-  border: 1px solid color-mix(in srgb, var(--status-up) 38%, var(--border-subtle));
-  background: var(--status-up-soft);
-  color: var(--status-up);
+  border: 1px solid var(--border-control);
+  background: var(--surface-btn);
+  color: var(--text-normal);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.16s ease;
+  box-shadow: var(--inner-sheen);
+  transition: color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui);
+}
+
+.lock-toggle > svg {
+  color: var(--status-up);
 }
 
 .lock-toggle.locked {
-  border-color: color-mix(in srgb, var(--status-warn) 45%, var(--border-subtle));
+  border-color: color-mix(in srgb, var(--status-warn) 38%, var(--border-control));
   background: var(--status-warn-soft);
+  color: var(--status-warn);
+}
+
+.lock-toggle.locked > svg {
   color: var(--status-warn);
 }
 
@@ -609,7 +617,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-color: color-mix(in srgb, var(--status-warn) 48%, transparent);
+  border-color: color-mix(in srgb, var(--status-warn) 40%, transparent);
   background: var(--status-warn-soft);
   color: var(--status-warn);
   font-size: 12.5px;
@@ -625,8 +633,8 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
 .cmd-trigger kbd {
   padding: 2px 6px;
   border-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-elevated);
+  border: 1px solid var(--divider-line);
+  background: var(--surface-input);
   font-size: 11px;
 }
 
@@ -646,8 +654,9 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   position: fixed;
   inset: 0;
   z-index: 240;
-  background: rgba(2, 6, 14, 0.56);
-  backdrop-filter: blur(6px);
+  background: rgba(2, 6, 14, 0.45);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: flex-end;
   padding: 12px;
@@ -660,6 +669,10 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   padding: 16px;
   padding-bottom: max(16px, env(safe-area-inset-bottom));
   background: var(--surface-popover);
+  border-color: var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
+  -webkit-backdrop-filter: var(--backdrop-chrome);
+  backdrop-filter: var(--backdrop-chrome);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -677,6 +690,17 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   gap: 8px;
 }
 
+.sheet-grid .sheet-active {
+  background: var(--rail-active-bg);
+  color: var(--rail-active-fg);
+  border-color: var(--accent-primary);
+  box-shadow: var(--rail-active-shadow);
+}
+
+.sheet-grid .sheet-active > svg {
+  color: var(--rail-active-icon);
+}
+
 .sheet-themes {
   display: flex;
   flex-direction: column;
@@ -685,7 +709,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
 
 .sheet-label {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-muted);
 }
 
@@ -720,18 +744,21 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
 
   .mobile-bottom {
     position: fixed;
-    left: 10px;
-    right: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(440px, calc(100vw - 20px));
     bottom: max(10px, env(safe-area-inset-bottom));
     z-index: 100;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    padding: 6px;
+    padding: 5px;
     gap: 4px;
+    border-radius: var(--mobile-dock-radius);
+    border: 1px solid var(--chrome-border);
     background: var(--surface-chrome);
     -webkit-backdrop-filter: var(--backdrop-chrome);
     backdrop-filter: var(--backdrop-chrome);
-    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.22), var(--shadow-elevated), var(--inner-sheen);
+    box-shadow: var(--chrome-shadow);
   }
 
   .m-tab {
@@ -739,27 +766,32 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    min-height: 50px;
-    border-radius: 14px;
+    gap: 2px;
+    min-height: 48px;
+    border-radius: calc(var(--mobile-dock-radius) - 5px);
     border: 1px solid transparent;
     background: transparent;
-    color: var(--text-normal);
+    color: var(--text-muted);
     font-size: 11px;
     font-weight: 600;
+    text-decoration: none;
     cursor: pointer;
-    transition: all 0.16s ease;
+    transition: color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui), transform 0.09s var(--ease-ui);
+  }
+
+  .m-tab:active {
+    transform: scale(0.96);
   }
 
   .m-tab.active {
-    color: var(--btn-primary-fg);
-    border-color: var(--btn-primary-border);
-    background: var(--btn-primary-bg);
-    box-shadow: var(--btn-primary-shadow);
+    color: var(--rail-active-fg);
+    border-color: var(--rail-active-border);
+    background: var(--rail-active-bg);
+    box-shadow: var(--rail-active-shadow);
   }
 
-  .m-tab.active > * {
-    color: var(--btn-primary-fg);
+  .m-tab.active > svg {
+    color: var(--rail-active-icon);
   }
 }
 

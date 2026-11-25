@@ -59,7 +59,7 @@ const emit = defineEmits<{
   (e: 'navigate', payload: { tab: string; subResource?: string }): void
 }>()
 
-const { catalog } = useCatalog()
+const { catalog, reloadCatalog } = useCatalog({ lazy: true })
 const { config, activateRouter } = useFleet()
 const { themes, setTheme } = useTheme()
 
@@ -71,6 +71,7 @@ watch(
   async (val) => {
     if (val) {
       query.value = ''
+      void reloadCatalog()
       await nextTick()
       inputRef.value?.focus()
     }
@@ -107,7 +108,7 @@ const allEntries = computed<PaletteEntry[]>(() => {
     entries.push({
       id: `tab:${tab.id}`,
       category: '工作区',
-      badgeClass: 'v4-badge-accent',
+      badgeClass: '',
       title: tab.label,
       subtitle: tab.desc,
       action: () => emit('navigate', { tab: tab.id }),
@@ -118,7 +119,7 @@ const allEntries = computed<PaletteEntry[]>(() => {
     const tab = groupToTab[spec.group] || 'overview'
     entries.push({
       id: `res:${spec.key}`,
-      category: 'CLI 资源',
+      category: 'CLI',
       badgeClass: '',
       title: spec.label,
       subtitle: spec.cli_command,
@@ -129,7 +130,7 @@ const allEntries = computed<PaletteEntry[]>(() => {
   for (const r of config.value.routers) {
     entries.push({
       id: `router:${r.id}`,
-      category: '切换 V4 节点',
+      category: 'V4 节点',
       badgeClass: 'v4-badge-up',
       title: r.name,
       subtitle: r.url,
@@ -142,8 +143,8 @@ const allEntries = computed<PaletteEntry[]>(() => {
   for (const t of themes) {
     entries.push({
       id: `theme:${t.id}`,
-      category: '主题皮肤',
-      badgeClass: 'v4-badge-warn',
+      category: '主题',
+      badgeClass: '',
       title: `${t.label} (${t.englishName})`,
       subtitle: t.description,
       action: () => setTheme(t.id),
@@ -154,6 +155,7 @@ const allEntries = computed<PaletteEntry[]>(() => {
 })
 
 const filteredEntries = computed(() => {
+  if (!props.open) return []
   const q = query.value.toLowerCase()
   if (!q) return allEntries.value.slice(0, 18)
   return allEntries.value
@@ -177,8 +179,9 @@ function runFirst() {
   position: fixed;
   inset: 0;
   z-index: 300;
-  background: rgba(2, 6, 14, 0.62);
-  backdrop-filter: blur(8px);
+  background: rgba(2, 6, 14, 0.48);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -189,6 +192,10 @@ function runFirst() {
   width: min(640px, calc(100vw - 24px));
   overflow: hidden;
   background: var(--surface-popover);
+  border-color: var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
+  -webkit-backdrop-filter: var(--backdrop-chrome);
+  backdrop-filter: var(--backdrop-chrome);
 }
 
 .palette-search {
@@ -196,11 +203,11 @@ function runFirst() {
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
 }
 
 .search-icon {
-  color: var(--accent-text);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -216,7 +223,7 @@ function runFirst() {
 .kbd {
   padding: 2px 7px;
   border-radius: 6px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   background: var(--surface-input);
   color: var(--text-muted);
   font-size: 11px;
@@ -250,11 +257,12 @@ function runFirst() {
   color: var(--text-strong);
   cursor: pointer;
   text-align: left;
+  transition: background-color 0.12s var(--ease-ui), border-color 0.12s var(--ease-ui);
 }
 
 .palette-item:hover {
-  border-color: var(--border-subtle);
-  background: var(--accent-primary-soft);
+  border-color: var(--divider-line);
+  background: var(--surface-hover);
 }
 
 .entry-left {

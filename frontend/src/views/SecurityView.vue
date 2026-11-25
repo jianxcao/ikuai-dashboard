@@ -1,6 +1,7 @@
 <template>
   <CatalogWorkspace
     ref="wsRef"
+    routeTab="security"
     eyebrow="FIREWALL & SECURITY CENTER"
     title="安全防护与准入中心"
     subtitle="实时汇聚端口暴露面、ACL 防火墙、MAC 过滤模式、L7/URL/域名过滤、二级路由检测与异常终端管控。"

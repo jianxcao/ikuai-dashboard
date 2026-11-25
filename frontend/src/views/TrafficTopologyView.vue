@@ -6,12 +6,12 @@
         <h1>应用协议画像与实时拓扑</h1>
         <p>透明解析路由器底层传输协议占比、L7 应用流量排名及多线全网节点拓扑关系。</p>
       </div>
-      <div class="pill-group">
-        <button type="button" class="v4-btn" :class="{ 'v4-btn-primary': activeSub === 'analytics' }" @click="activeSub = 'analytics'">
+      <div class="v4-seg-bar" role="tablist">
+        <button type="button" class="v4-seg-btn" :class="{ active: activeSub === 'analytics' }" @click="selectSub('analytics')">
           <PieChart :size="14" />
           <span>应用与协议洞察</span>
         </button>
-        <button type="button" class="v4-btn" :class="{ 'v4-btn-primary': activeSub === 'topology' }" @click="activeSub = 'topology'">
+        <button type="button" class="v4-seg-btn" :class="{ active: activeSub === 'topology' }" @click="selectSub('topology')">
           <Network :size="14" />
           <span>实时网络拓扑图</span>
         </button>
@@ -128,22 +128,40 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/lib/echarts'
 import { Network, PieChart, RefreshCw } from 'lucide-vue-next'
 import { fetchNetworkMap, type NetworkMapData } from '@/api/monitor'
 import { fetchV4Analytics, type AppProtocolAnalyticsDTO } from '@/api/v4'
+import { useAppRoute } from '@/composables/useAppRoute'
 import { useFleet } from '@/composables/useFleet'
 import { useChartTheme } from '@/composables/useChartTheme'
 import { formatBytes, formatSpeed } from '@/composables/useFormatters'
+
+const props = defineProps<{
+  initialSubResource?: string
+  navSeq?: number
+}>()
 
 const emit = defineEmits<{
   (e: 'navigate', payload: { tab: string; subResource?: string }): void
 }>()
 
+const { currentTab, syncSubTab } = useAppRoute()
 const { routerEpoch } = useFleet()
 const { palette } = useChartTheme()
 
-const activeSub = ref<'analytics' | 'topology'>('analytics')
+const activeSub = ref<'analytics' | 'topology'>(
+  props.initialSubResource === 'topology' ? 'topology' : 'analytics'
+)
+
+if (currentTab.value === 'traffic-topology' && !props.initialSubResource) {
+  syncSubTab('traffic-topology', activeSub.value, { replace: true })
+}
+
+function selectSub(sub: 'analytics' | 'topology') {
+  activeSub.value = sub
+  syncSubTab('traffic-topology', sub, { replace: false })
+}
 const error = ref<string | null>(null)
 const analytics = ref<AppProtocolAnalyticsDTO | null>(null)
 const topoData = ref<NetworkMapData | null>(null)
@@ -154,6 +172,16 @@ const topoChartEl = ref<HTMLElement | null>(null)
 let protoChart: echarts.ECharts | null = null
 let topoChart: echarts.ECharts | null = null
 let resizeObs: ResizeObserver | null = null
+let analyticsSeq = 0
+let topoSeq = 0
+
+function extractErr(e: unknown): string {
+  if (e && typeof e === 'object' && 'response' in e) {
+    const resp = (e as { response?: { data?: { message?: string } } }).response
+    if (resp?.data?.message) return resp.data.message
+  }
+  return e instanceof Error ? e.message : String(e)
+}
 
 const maxAppBytes = computed(() => {
   const list = analytics.value?.app_summary || []
@@ -165,30 +193,45 @@ function appPercent(item: Record<string, unknown>): number {
 }
 
 async function loadAnalytics() {
+  const seq = ++analyticsSeq
   error.value = null
   try {
-    analytics.value = await fetchV4Analytics()
+    const res = await fetchV4Analytics()
+    if (seq !== analyticsSeq) return
+    analytics.value = res
     await nextTick()
     renderProtoChart()
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e)
+    if (seq !== analyticsSeq) return
+    error.value = extractErr(e)
   }
 }
 
 async function loadTopology() {
+  const seq = ++topoSeq
   error.value = null
   try {
-    topoData.value = await fetchNetworkMap()
+    const res = await fetchNetworkMap()
+    if (seq !== topoSeq) return
+    topoData.value = res
     await nextTick()
     renderTopoChart()
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e)
+    if (seq !== topoSeq) return
+    error.value = extractErr(e)
   }
 }
 
 function renderProtoChart() {
   if (!protoChartEl.value || !analytics.value) return
-  if (!protoChart) protoChart = echarts.init(protoChartEl.value)
+  if (protoChart && protoChart.getDom() !== protoChartEl.value) {
+    protoChart.dispose()
+    protoChart = null
+  }
+  if (!protoChart) {
+    protoChart = echarts.init(protoChartEl.value)
+    resizeObs?.observe(protoChartEl.value)
+  }
   const pal = palette.value
   const data = (analytics.value.protocols || []).map((p, idx) => ({
     name: String(p.proto_name ?? p.name ?? `Proto-${idx}`),
@@ -220,8 +263,13 @@ function renderProtoChart() {
 
 function renderTopoChart() {
   if (!topoChartEl.value || !topoData.value) return
+  if (topoChart && topoChart.getDom() !== topoChartEl.value) {
+    topoChart.dispose()
+    topoChart = null
+  }
   if (!topoChart) {
     topoChart = echarts.init(topoChartEl.value)
+    resizeObs?.observe(topoChartEl.value)
     topoChart.on('click', (params) => {
       const d = (params?.data ?? null) as { name?: string; ip?: string; type?: string } | null
       if (d?.name) {
@@ -268,6 +316,20 @@ function renderTopoChart() {
   }, true)
 }
 
+let resizeRaf = 0
+
+watch(
+  () => [props.initialSubResource, props.navSeq] as const,
+  ([next]) => {
+    if (currentTab.value !== 'traffic-topology') return
+    if (next === 'topology' || next === 'analytics') {
+      activeSub.value = next
+    } else if (!next) {
+      syncSubTab('traffic-topology', activeSub.value, { replace: true })
+    }
+  }
+)
+
 watch(activeSub, (tab) => {
   if (tab === 'analytics') void loadAnalytics()
   else void loadTopology()
@@ -282,16 +344,24 @@ watch(routerEpoch, () => {
 })
 
 onMounted(async () => {
-  await loadAnalytics()
   resizeObs = new ResizeObserver(() => {
-    protoChart?.resize()
-    topoChart?.resize()
+    if (resizeRaf) cancelAnimationFrame(resizeRaf)
+    resizeRaf = requestAnimationFrame(() => {
+      protoChart?.resize()
+      topoChart?.resize()
+    })
   })
-  if (protoChartEl.value) resizeObs.observe(protoChartEl.value)
-  if (topoChartEl.value) resizeObs.observe(topoChartEl.value)
+  if (activeSub.value === 'topology') {
+    await loadTopology()
+  } else {
+    await loadAnalytics()
+  }
 })
 
 onActivated(() => {
+  if (currentTab.value === 'traffic-topology' && !props.initialSubResource) {
+    syncSubTab('traffic-topology', activeSub.value, { replace: true })
+  }
   void nextTick(() => {
     protoChart?.resize()
     topoChart?.resize()
@@ -299,6 +369,7 @@ onActivated(() => {
 })
 
 onUnmounted(() => {
+  if (resizeRaf) cancelAnimationFrame(resizeRaf)
   resizeObs?.disconnect()
   protoChart?.dispose()
   topoChart?.dispose()
@@ -308,10 +379,9 @@ onUnmounted(() => {
 <style scoped>
 .traffic-page { display: flex; flex-direction: column; gap: 16px; }
 .ws-head { padding: 18px 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
-.ws-eyebrow { font-size: 11px; font-weight: 700; color: var(--accent-text); letter-spacing: 0.08em; }
-.ws-head h1 { margin: 4px 0 0; font-size: 22px; font-weight: 800; }
+.ws-eyebrow { font-size: 11px; font-weight: 600; color: var(--text-faint); letter-spacing: 0.06em; }
+.ws-head h1 { margin: 4px 0 0; font-size: 21px; font-weight: 800; }
 .ws-head p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
-.pill-group { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .panel-box { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
@@ -325,14 +395,14 @@ onUnmounted(() => {
 .rank-list { display: flex; flex-direction: column; gap: 12px; }
 .rank-item { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
 .rank-top { display: flex; justify-content: space-between; gap: 10px; }
-.rank-name em { font-style: normal; color: var(--accent-text); margin-right: 6px; }
+.rank-name em { font-style: normal; color: var(--text-faint); margin-right: 6px; }
 .bar-bg { height: 7px; border-radius: 999px; background: var(--surface-input); overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary)); }
+.bar-fill { height: 100%; border-radius: 999px; background: var(--accent-primary); }
 
-.table-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--divider-line); border-radius: 12px; }
 .v4-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.v4-table th { text-align: left; padding: 10px 12px; font-size: 11px; color: var(--text-muted); background: var(--surface-input); border-bottom: 1px solid var(--border-subtle); }
-.v4-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); }
+.v4-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--surface-table-head); border-bottom: 1px solid var(--divider-line); }
+.v4-table td { padding: 10px 12px; border-bottom: 1px solid var(--divider-line); }
 .ic-up { color: var(--chart-up); }
 .ic-down { color: var(--chart-down); }
 .btn-xs { min-height: 30px; padding: 0 10px; font-size: 12px; }

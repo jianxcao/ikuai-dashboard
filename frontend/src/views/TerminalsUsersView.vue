@@ -15,7 +15,7 @@
         type="button"
         class="subtab-pill"
         :class="{ active: activeTab === tab.key }"
-        @click="activeTab = tab.key"
+        @click="selectSubTab(tab.key)"
       >
         {{ tab.label }}
       </button>
@@ -228,6 +228,7 @@
           </div>
           <div class="drawer-body">
             <div v-if="detailLoading" class="loading-state"><div class="spinner" /></div>
+            <div v-else-if="detailError" class="error-banner">{{ detailError }}</div>
             <template v-else-if="clientDetail">
               <div class="detail-section">
                 <h4>5 分钟速率趋势</h4>
@@ -311,7 +312,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/lib/echarts'
 import { Ban, BarChart3, Gauge, Pin, RefreshCw, Search, Tag, UserX, X } from 'lucide-vue-next'
 import ResourceCollectionPanel from '@/components/common/ResourceCollectionPanel.vue'
 import SingletonConfigPanel from '@/components/common/SingletonConfigPanel.vue'
@@ -324,6 +325,7 @@ import {
   type ClientDetailDTO,
   type ClientRecordDTO,
 } from '@/api/v4'
+import { useAppRoute } from '@/composables/useAppRoute'
 import { useAuth } from '@/composables/useAuth'
 import { useFleet } from '@/composables/useFleet'
 import { useChartTheme } from '@/composables/useChartTheme'
@@ -334,6 +336,7 @@ const props = defineProps<{
   navSeq?: number
 }>()
 
+const { currentTab, syncSubTab } = useAppRoute()
 const { readOnly } = useAuth()
 const { routerEpoch } = useFleet()
 const { palette } = useChartTheme()
@@ -349,7 +352,21 @@ const subTabs = [
   { key: 'auth-web-server', label: 'Web 认证服务' },
 ]
 
-const activeTab = ref('online')
+const initialTab =
+  props.initialSubResource && subTabs.some((t) => t.key === props.initialSubResource)
+    ? props.initialSubResource
+    : 'online'
+const activeTab = ref(initialTab)
+
+if (currentTab.value === 'terminals' && !props.initialSubResource) {
+  syncSubTab('terminals', activeTab.value, { replace: true })
+}
+
+function selectSubTab(key: string) {
+  if (!subTabs.some((t) => t.key === key)) return
+  activeTab.value = key
+  syncSubTab('terminals', key, { replace: false })
+}
 const subtabBarEl = ref<HTMLElement | null>(null)
 const search = ref('')
 const sortBy = ref<'download_speed' | 'upload_speed' | 'total_down' | 'connections'>('download_speed')
@@ -361,10 +378,15 @@ const authRows = ref<Array<Record<string, unknown>>>([])
 
 const selectedClient = ref<ClientRecordDTO | null>(null)
 const detailLoading = ref(false)
+const detailError = ref<string | null>(null)
 const clientDetail = ref<ClientDetailDTO | null>(null)
 const detailChartEl = ref<HTMLElement | null>(null)
 let detailChart: echarts.ECharts | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let clientReqSeq = 0
+let activeClientReqs = 0
+let authReqSeq = 0
+let detailReqSeq = 0
 
 const quickModal = reactive({
   open: false,
@@ -456,10 +478,18 @@ async function submitQuickModal() {
     }
     quickModal.open = false
   } catch (e: unknown) {
-    quickModal.error = e instanceof Error ? e.message : String(e)
+    quickModal.error = extractErr(e)
   } finally {
     quickModal.busy = false
   }
+}
+
+function extractErr(e: unknown): string {
+  if (e && typeof e === 'object' && 'response' in e) {
+    const resp = (e as { response?: { data?: { message?: string } } }).response
+    if (resp?.data?.message) return resp.data.message
+  }
+  return e instanceof Error ? e.message : String(e)
 }
 
 function showToast(msg: string) {
@@ -471,25 +501,40 @@ function showToast(msg: string) {
 
 async function loadClients() {
   if (!isClientMode.value) return
+  const seq = ++clientReqSeq
+  activeClientReqs += 1
   loading.value = true
   error.value = null
   try {
     const res = await fetchV4Clients({ mode: activeTab.value, page: 1, page_size: 200, search: search.value })
+    if (seq !== clientReqSeq) return
     clients.value = res.items || []
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e)
+    if (seq !== clientReqSeq) return
+    error.value = extractErr(e)
   } finally {
-    loading.value = false
+    activeClientReqs = Math.max(0, activeClientReqs - 1)
+    if (seq === clientReqSeq) {
+      loading.value = false
+    }
   }
 }
 
+function pollClients() {
+  if (activeClientReqs > 0) return
+  void loadClients()
+}
+
 async function reloadAuthOnline() {
+  const seq = ++authReqSeq
   error.value = null
   try {
     const res = await fetchV4Resource('auth-online', { page: 1, page_size: 100 })
+    if (seq !== authReqSeq) return
     authRows.value = res.rows || []
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e)
+    if (seq !== authReqSeq) return
+    error.value = extractErr(e)
   }
 }
 
@@ -501,24 +546,37 @@ async function kickUser(row: Record<string, unknown>) {
     await kickV4OnlineUser(id)
     await reloadAuthOnline()
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = extractErr(e)
   }
 }
 
 async function openDetail(client: ClientRecordDTO) {
+  const seq = ++detailReqSeq
   selectedClient.value = client
   detailLoading.value = true
+  detailError.value = null
   clientDetail.value = null
+  detailChart?.dispose()
+  detailChart = null
   try {
-    clientDetail.value = await fetchV4ClientDetail(client.ip_addr, client.mac)
+    const detail = await fetchV4ClientDetail(client.ip_addr, client.mac)
+    if (seq !== detailReqSeq) return
+    clientDetail.value = detail
     await nextTick()
+    if (seq !== detailReqSeq) return
     renderDetailChart()
+  } catch (e: unknown) {
+    if (seq !== detailReqSeq) return
+    detailError.value = extractErr(e)
   } finally {
-    detailLoading.value = false
+    if (seq === detailReqSeq) {
+      detailLoading.value = false
+    }
   }
 }
 
 function closeDetail() {
+  detailReqSeq += 1
   selectedClient.value = null
   detailChart?.dispose()
   detailChart = null
@@ -526,6 +584,10 @@ function closeDetail() {
 
 function renderDetailChart() {
   if (!detailChartEl.value || !clientDetail.value) return
+  if (detailChart && detailChart.getDom() !== detailChartEl.value) {
+    detailChart.dispose()
+    detailChart = null
+  }
   if (!detailChart) detailChart = echarts.init(detailChartEl.value)
   const pal = palette.value
   const list = clientDetail.value.traffic_load || []
@@ -554,9 +616,13 @@ function renderDetailChart() {
 watch(
   () => [props.initialSubResource, props.navSeq] as const,
   ([next]) => {
-    if (next && subTabs.some((t) => t.key === next)) activeTab.value = next
-  },
-  { immediate: true }
+    if (currentTab.value !== 'terminals') return
+    if (next && subTabs.some((t) => t.key === next)) {
+      activeTab.value = next
+    } else if (!next) {
+      syncSubTab('terminals', activeTab.value, { replace: true })
+    }
+  }
 )
 
 watch(activeTab, async () => {
@@ -575,8 +641,9 @@ let hasMounted = false
 function startPolling() {
   if (pollTimer) return
   pollTimer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
     if (activeTab.value === 'online' || activeTab.value === 'ipv6-online') {
-      void loadClients()
+      pollClients()
     }
   }, 6000)
 }
@@ -588,25 +655,38 @@ function stopPolling() {
   }
 }
 
+function handleVisibilityChange() {
+  if (typeof document !== 'undefined' && !document.hidden && (activeTab.value === 'online' || activeTab.value === 'ipv6-online')) {
+    void loadClients()
+  }
+}
+
 onMounted(() => {
   hasMounted = true
   startPolling()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onActivated(() => {
+  if (currentTab.value === 'terminals' && !props.initialSubResource) {
+    syncSubTab('terminals', activeTab.value, { replace: true })
+  }
   if (hasMounted && (activeTab.value === 'online' || activeTab.value === 'ipv6-online')) {
     void loadClients()
   }
   startPolling()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   void nextTick(() => detailChart?.resize())
 })
 
 onDeactivated(() => {
   stopPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   stopPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   detailChart?.dispose()
 })
 </script>
@@ -614,29 +694,27 @@ onUnmounted(() => {
 <style scoped>
 .terminals-page { display: flex; flex-direction: column; gap: 16px; }
 .ws-head { padding: 18px 20px; }
-.ws-eyebrow { font-size: 11px; font-weight: 700; color: var(--accent-text); letter-spacing: 0.08em; }
-.ws-head h1 { margin: 4px 0 0; font-size: 22px; font-weight: 800; }
+.ws-eyebrow { font-size: 11px; font-weight: 600; color: var(--text-faint); letter-spacing: 0.06em; }
+.ws-head h1 { margin: 4px 0 0; font-size: 21px; font-weight: 800; }
 .ws-head p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
 
 .subtab-bar {
-  display: flex; flex-wrap: wrap; gap: 6px; padding: 6px;
-  border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); background: var(--surface-input);
+  display: flex; flex-wrap: wrap; gap: 4px; padding: 5px;
+  border-radius: var(--radius-lg); border: 1px solid var(--seg-track-border); background: var(--seg-track-bg);
 }
 .subtab-pill {
-  min-height: 34px; padding: 0 13px; border-radius: var(--radius-control); border: 1px solid transparent;
-  background: transparent; color: var(--text-normal); font-size: 12px; font-weight: 600; cursor: pointer;
+  min-height: 32px; padding: 0 12px; border-radius: var(--radius-control); border: 1px solid transparent;
+  background: transparent; color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: color 0.14s var(--ease-ui), background-color 0.14s var(--ease-ui), box-shadow 0.14s var(--ease-ui);
 }
 .subtab-pill:hover {
   color: var(--text-strong);
-  background: var(--surface-hover);
-}
-.subtab-pill.active,
-.subtab-pill.active > * {
-  color: var(--btn-primary-fg);
 }
 .subtab-pill.active {
-  border-color: var(--btn-primary-border);
-  background: var(--btn-primary-bg); box-shadow: var(--btn-primary-shadow);
+  color: var(--seg-active-fg);
+  border-color: var(--seg-active-border);
+  background: var(--seg-active-bg);
+  box-shadow: var(--seg-active-shadow);
 }
 
 .clients-card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -647,10 +725,10 @@ onUnmounted(() => {
 .toolbar-right { display: flex; gap: 8px; align-items: center; }
 .sort-select { width: auto; min-width: 150px; }
 
-.table-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--divider-line); border-radius: var(--radius-md); }
 .v4-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.v4-table th { text-align: left; padding: 10px 12px; font-size: 11px; color: var(--text-muted); background: var(--surface-table-head); border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
-.v4-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--text-normal); white-space: nowrap; }
+.v4-table th { text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--surface-table-head); border-bottom: 1px solid var(--divider-line); white-space: nowrap; }
+.v4-table td { padding: 10px 12px; border-bottom: 1px solid var(--divider-line); color: var(--text-normal); white-space: nowrap; }
 .v4-table tbody tr:last-child td { border-bottom: none; }
 
 .host-cell { display: flex; flex-direction: column; gap: 2px; }
@@ -661,19 +739,19 @@ onUnmounted(() => {
 .client-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .empty-state { padding: 36px 16px; text-align: center; color: var(--text-muted); }
 
-.drawer-backdrop { position: fixed; inset: 0; z-index: 250; background: rgba(6, 10, 20, 0.45); backdrop-filter: blur(8px); display: flex; justify-content: flex-end; }
+.drawer-backdrop { position: fixed; inset: 0; z-index: 250; background: rgba(6, 10, 20, 0.45); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); display: flex; justify-content: flex-end; }
 .drawer-backdrop.center { align-items: center; justify-content: center; }
-.drawer-panel { width: min(480px, 100vw); height: 100%; border-radius: var(--radius-xl) 0 0 var(--radius-xl); display: flex; flex-direction: column; background: var(--surface-popover); }
-.drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; }
+.drawer-panel { width: min(480px, 100vw); height: 100%; border-radius: var(--radius-xl) 0 0 var(--radius-xl); display: flex; flex-direction: column; background: var(--surface-popover); border-color: var(--chrome-border); box-shadow: var(--chrome-shadow); -webkit-backdrop-filter: var(--backdrop-chrome); backdrop-filter: var(--backdrop-chrome); }
+.drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--divider-line); display: flex; justify-content: space-between; align-items: center; }
 .drawer-head > div > strong { display: block; font-size: 15px; }
 .drawer-head > div > span { font-size: 11px; color: var(--text-muted); }
 .drawer-body { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
 .detail-section h4 { margin: 0 0 10px; font-size: 13px; color: var(--text-strong); }
 .detail-chart { width: 100%; height: 220px; }
 .app-list { display: flex; flex-direction: column; gap: 8px; }
-.app-row { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: var(--surface-input); font-size: 12px; }
+.app-row { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--divider-line); background: var(--surface-input); font-size: 12px; }
 
-.confirm-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; background: var(--surface-popover); display: flex; flex-direction: column; gap: 12px; }
+.confirm-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; background: var(--surface-popover); border-color: var(--chrome-border); box-shadow: var(--chrome-shadow); -webkit-backdrop-filter: var(--backdrop-chrome); backdrop-filter: var(--backdrop-chrome); display: flex; flex-direction: column; gap: 12px; }
 .modal-top { display: flex; justify-content: space-between; align-items: center; }
 .modal-top h4 { margin: 0; font-size: 15px; }
 .modal-form { display: flex; flex-direction: column; gap: 10px; }

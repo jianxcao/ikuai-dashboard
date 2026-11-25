@@ -232,9 +232,9 @@
               <Gauge :size="16" />
               <h3>WAN 历史速率与链路延迟</h3>
             </div>
-            <div class="pill-group">
-              <button type="button" class="mini-pill" :class="{ active: wanChartMode === 'speed' }" @click="wanChartMode = 'speed'">速率 KB/s</button>
-              <button type="button" class="mini-pill" :class="{ active: wanChartMode === 'rtt' }" @click="wanChartMode = 'rtt'">延迟 RTT ms</button>
+            <div class="v4-seg-bar" role="tablist">
+              <button type="button" class="v4-seg-btn" :class="{ active: wanChartMode === 'speed' }" @click="wanChartMode = 'speed'">速率 KB/s</button>
+              <button type="button" class="v4-seg-btn" :class="{ active: wanChartMode === 'rtt' }" @click="wanChartMode = 'rtt'">延迟 RTT ms</button>
             </div>
           </div>
           <div ref="wanChartEl" class="chart-box" />
@@ -337,7 +337,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/lib/echarts'
 import {
   Activity,
   Archive,
@@ -386,30 +386,47 @@ const loadChartEl = ref<HTMLElement | null>(null)
 let wanChart: echarts.ECharts | null = null
 let loadChart: echarts.ECharts | null = null
 let resizeObserver: ResizeObserver | null = null
+let resizeRaf = 0
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let overviewReqSeq = 0
+let activeOverviewReqs = 0
+let loadReqSeq = 0
+let lastWanRenderSig = ''
 
 const upParts = computed(() => formatSpeedParts(overview.value?.stream.upload_bps))
 const downParts = computed(() => formatSpeedParts(overview.value?.stream.download_bps))
 
-async function fetchOverviewOnly(clearLoading = true) {
+async function fetchOverviewOnly(clearLoading = true, background = false) {
+  if (background && activeOverviewReqs > 0) return
+  const seq = ++overviewReqSeq
+  activeOverviewReqs += 1
   try {
-    overview.value = await fetchV4Overview()
+    const data = await fetchV4Overview()
+    if (seq !== overviewReqSeq) return
+    overview.value = data
     error.value = null
     await nextTick()
-    renderWanChart()
+    if (seq !== overviewReqSeq) return
+    renderWanChart(false)
   } catch (e: unknown) {
+    if (seq !== overviewReqSeq) return
     error.value = extractErr(e)
   } finally {
-    if (clearLoading) {
+    activeOverviewReqs = Math.max(0, activeOverviewReqs - 1)
+    if (clearLoading && seq === overviewReqSeq) {
       loading.value = false
     }
   }
 }
 
 async function fetchLoadOnly() {
+  const seq = ++loadReqSeq
   try {
-    loadData.value = await fetchV4LoadHistory(loadMetric.value, loadRange.value, 'avg')
+    const data = await fetchV4LoadHistory(loadMetric.value, loadRange.value, 'avg')
+    if (seq !== loadReqSeq) return
+    loadData.value = data
     await nextTick()
+    if (seq !== loadReqSeq) return
     renderLoadChart()
   } catch {
     // Keep previous chart on transient error
@@ -451,14 +468,24 @@ async function runQuickAction(actionKey: string, okText: string) {
   }
 }
 
-function renderWanChart() {
+function renderWanChart(force = false) {
   if (!wanChartEl.value || !overview.value) return
+  if (wanChart && wanChart.getDom() !== wanChartEl.value) {
+    wanChart.dispose()
+    wanChart = null
+  }
   if (!wanChart) {
     wanChart = echarts.init(wanChartEl.value)
+    resizeObserver?.observe(wanChartEl.value)
   }
   const pal = palette.value
   const points = overview.value.wan_history.filter((p) => p.interface === 'all')
   const list = points.length > 0 ? points : overview.value.wan_history
+  const lastTs = list[list.length - 1]?.timestamp ?? 0
+  const sig = `${wanChartMode.value}|${pal.downColor}|${pal.upColor}|${list.length}|${lastTs}`
+  if (!force && sig === lastWanRenderSig) return
+  lastWanRenderSig = sig
+
   const labels = list.map((p) => {
     const d = new Date(p.timestamp * 1000)
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
@@ -466,6 +493,8 @@ function renderWanChart() {
 
   const isSpeed = wanChartMode.value === 'speed'
   wanChart.setOption({
+    animationDuration: 260,
+    animationDurationUpdate: 180,
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
@@ -533,13 +562,18 @@ function renderWanChart() {
             itemStyle: { color: pal.warn },
           },
         ],
-  }, true)
+  }, { replaceMerge: ['series'] })
 }
 
 function renderLoadChart() {
   if (!loadChartEl.value || !loadData.value) return
+  if (loadChart && loadChart.getDom() !== loadChartEl.value) {
+    loadChart.dispose()
+    loadChart = null
+  }
   if (!loadChart) {
     loadChart = echarts.init(loadChartEl.value)
+    resizeObserver?.observe(loadChartEl.value)
   }
   const pal = palette.value
   const rows = loadData.value.series || []
@@ -557,6 +591,8 @@ function renderLoadChart() {
   })
 
   loadChart.setOption({
+    animationDuration: 260,
+    animationDurationUpdate: 180,
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
@@ -588,7 +624,7 @@ function renderLoadChart() {
         areaStyle: { opacity: 0.18, color: pal.downColor },
       },
     ],
-  }, true)
+  })
 }
 
 function extractErr(e: unknown): string {
@@ -599,17 +635,21 @@ function extractErr(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-watch([wanChartMode, palette], () => renderWanChart())
+watch([wanChartMode, palette], () => renderWanChart(true))
 watch([loadMetric, loadRange], () => void fetchLoadOnly())
 watch(palette, () => renderLoadChart())
-watch(routerEpoch, () => void refreshAll())
+watch(routerEpoch, () => {
+  lastWanRenderSig = ''
+  void refreshAll()
+})
 
 let hasMounted = false
 
 function startPolling() {
   if (pollTimer) return
   pollTimer = setInterval(() => {
-    void fetchOverviewOnly()
+    if (typeof document !== 'undefined' && document.hidden) return
+    void fetchOverviewOnly(true, true)
   }, 4000)
 }
 
@@ -620,23 +660,32 @@ function stopPolling() {
   }
 }
 
+function handleVisibilityChange() {
+  if (typeof document !== 'undefined' && !document.hidden) {
+    void fetchOverviewOnly(false)
+  }
+}
+
 onMounted(async () => {
   hasMounted = true
-  await refreshAll()
   resizeObserver = new ResizeObserver(() => {
-    wanChart?.resize()
-    loadChart?.resize()
+    if (resizeRaf) cancelAnimationFrame(resizeRaf)
+    resizeRaf = requestAnimationFrame(() => {
+      wanChart?.resize()
+      loadChart?.resize()
+    })
   })
-  if (wanChartEl.value) resizeObserver.observe(wanChartEl.value)
-  if (loadChartEl.value) resizeObserver.observe(loadChartEl.value)
+  await refreshAll()
 
   startPolling()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onActivated(() => {
   if (hasMounted) {
     void fetchOverviewOnly()
     startPolling()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     void nextTick(() => {
       wanChart?.resize()
       loadChart?.resize()
@@ -646,10 +695,13 @@ onActivated(() => {
 
 onDeactivated(() => {
   stopPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   stopPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  if (resizeRaf) cancelAnimationFrame(resizeRaf)
   resizeObserver?.disconnect()
   wanChart?.dispose()
   loadChart?.dispose()
@@ -686,11 +738,11 @@ onUnmounted(() => {
 }
 
 .live-dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--status-up);
-  box-shadow: 0 0 12px var(--status-up);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-up) 55%, transparent);
 }
 
 .meta-line {
@@ -791,7 +843,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--accent-text);
+  color: var(--text-muted);
 }
 
 .card-title h3 {
@@ -875,7 +927,7 @@ onUnmounted(() => {
 .port-slot {
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   background: var(--surface-input);
   display: flex;
   flex-direction: column;
@@ -883,7 +935,7 @@ onUnmounted(() => {
 }
 
 .port-slot.linked {
-  border-color: color-mix(in srgb, var(--status-up) 35%, var(--border-subtle));
+  border-color: color-mix(in srgb, var(--status-up) 30%, var(--divider-line));
 }
 
 .port-top {
@@ -901,7 +953,7 @@ onUnmounted(() => {
 
 .port-led.on {
   background: var(--status-up);
-  box-shadow: 0 0 8px var(--status-up);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-up) 55%, transparent);
 }
 
 .port-mid {
@@ -930,8 +982,8 @@ onUnmounted(() => {
   min-height: 28px;
   padding: 0 10px;
   border-radius: 8px;
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-input);
+  border: 1px solid var(--divider-line);
+  background: var(--surface-btn);
   color: var(--text-normal);
   font-size: 11px;
   font-weight: 600;
@@ -940,7 +992,7 @@ onUnmounted(() => {
 
 .mini-pill.active {
   border-color: var(--accent-primary);
-  background: var(--accent-primary-soft);
+  background: var(--rail-active-bg);
   color: var(--text-strong);
 }
 
@@ -958,7 +1010,7 @@ onUnmounted(() => {
 .wan-row {
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--divider-line);
   background: var(--surface-input);
   display: flex;
   flex-direction: column;
@@ -1006,13 +1058,13 @@ onUnmounted(() => {
   padding: 8px;
   color: var(--text-muted);
   font-size: 11px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
   white-space: nowrap;
 }
 
 .mini-table td {
   padding: 9px 8px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--divider-line);
   white-space: nowrap;
 }
 
