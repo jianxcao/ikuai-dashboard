@@ -365,9 +365,37 @@
                 <h3>WAN 历史速率与链路延迟</h3>
               </div>
               <div class="title-right-group">
-                <div class="v4-seg-bar" role="tablist">
-                  <button type="button" class="v4-seg-btn" :class="{ active: wanChartMode === 'speed' }" @click="wanChartMode = 'speed'">速率 KB/s</button>
-                  <button type="button" class="v4-seg-btn" :class="{ active: wanChartMode === 'rtt' }" @click="wanChartMode = 'rtt'">延迟 RTT ms</button>
+                <div class="v4-seg-bar" role="tablist" aria-label="WAN 历史速率单位与模式">
+                  <button
+                    type="button"
+                    role="tab"
+                    class="v4-seg-btn"
+                    :class="{ active: wanChartMode === 'speed' && wanSpeedUnit === 'KB' }"
+                    :aria-selected="wanChartMode === 'speed' && wanSpeedUnit === 'KB'"
+                    @click="selectWanSpeedUnit('KB')"
+                  >
+                    速率 KB/s
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    class="v4-seg-btn"
+                    :class="{ active: wanChartMode === 'speed' && wanSpeedUnit === 'MB' }"
+                    :aria-selected="wanChartMode === 'speed' && wanSpeedUnit === 'MB'"
+                    @click="selectWanSpeedUnit('MB')"
+                  >
+                    速率 MB/s
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    class="v4-seg-btn"
+                    :class="{ active: wanChartMode === 'rtt' }"
+                    :aria-selected="wanChartMode === 'rtt'"
+                    @click="wanChartMode = 'rtt'"
+                  >
+                    延迟 RTT ms
+                  </button>
                 </div>
                 <div v-if="!layoutLocked" class="drag-ctl-group">
                   <span class="drag-handle-pill" title="按住拖动与其他模块互换位置">
@@ -628,9 +656,43 @@ const dragState = reactive<{
   overId: string | null
 }>({ group: null, draggingId: null, overId: null })
 
+type WanSpeedUnit = 'KB' | 'MB'
+const WAN_SPEED_UNIT_STORAGE_KEY = 'ikuai_v4_wan_speed_unit'
+
+function loadStoredWanSpeedUnit(): WanSpeedUnit {
+  if (typeof window === 'undefined') return 'KB'
+  try {
+    return localStorage.getItem(WAN_SPEED_UNIT_STORAGE_KEY) === 'MB' ? 'MB' : 'KB'
+  } catch {
+    return 'KB'
+  }
+}
+
+function convertWanSpeed(kbps: number, unit: WanSpeedUnit): number {
+  if (!Number.isFinite(kbps)) return 0
+  if (unit === 'MB') {
+    const mb = kbps / 1024
+    return mb > 0 && mb < 0.1 ? Math.round(mb * 1000) / 1000 : Math.round(mb * 100) / 100
+  }
+  return Math.round(kbps * 100) / 100
+}
+
 const wanChartMode = ref<'speed' | 'rtt'>('speed')
+const wanSpeedUnit = ref<WanSpeedUnit>(loadStoredWanSpeedUnit())
 const loadMetric = ref('cpu')
 const loadRange = ref('hour')
+
+function selectWanSpeedUnit(unit: WanSpeedUnit) {
+  wanSpeedUnit.value = unit
+  wanChartMode.value = 'speed'
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(WAN_SPEED_UNIT_STORAGE_KEY, unit)
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+}
 
 const wanChartEl = ref<HTMLElement | null>(null)
 const loadChartEl = ref<HTMLElement | null>(null)
@@ -645,6 +707,7 @@ let activeOverviewReqs = 0
 let loadReqSeq = 0
 let activeLoadReqs = 0
 let lastWanRenderSig = ''
+let lastWanModeKey = ''
 
 function setWanChartEl(el: unknown) {
   const dom = el instanceof HTMLElement ? el : null
@@ -944,7 +1007,8 @@ function renderWanChart(force = false) {
       }))
   }
   const lastTs = list[list.length - 1]?.timestamp ?? 0
-  const sig = `${wanChartMode.value}|${pal.downColor}|${pal.upColor}|${list.length}|${lastTs}`
+  const speedUnit = wanSpeedUnit.value
+  const sig = `${wanChartMode.value}|${speedUnit}|${pal.downColor}|${pal.upColor}|${list.length}|${lastTs}`
   if (!force && sig === lastWanRenderSig) return
   lastWanRenderSig = sig
 
@@ -954,6 +1018,10 @@ function renderWanChart(force = false) {
   })
 
   const isSpeed = wanChartMode.value === 'speed'
+  const speedUnitLabel = speedUnit === 'MB' ? 'MB/s' : 'KB/s'
+  const modeKey = isSpeed ? `speed:${speedUnit}` : 'rtt'
+  const modeChanged = modeKey !== lastWanModeKey
+  lastWanModeKey = modeKey
   wanChart.setOption({
     animationDuration: 260,
     animationDurationUpdate: 180,
@@ -968,7 +1036,7 @@ function renderWanChart(force = false) {
       top: 0,
       textStyle: { color: pal.textMuted, fontSize: 11 },
     },
-    grid: { left: 46, right: 16, top: 32, bottom: 26 },
+    grid: { left: 8, right: 16, top: 32, bottom: 6, containLabel: true },
     xAxis: {
       type: 'category',
       data: labels,
@@ -983,21 +1051,21 @@ function renderWanChart(force = false) {
     series: isSpeed
       ? [
           {
-            name: '平均下行 (KB/s)',
+            name: `平均下行 (${speedUnitLabel})`,
             type: 'line',
             smooth: true,
             showSymbol: false,
-            data: list.map((p) => p.avg_download_kbps),
+            data: list.map((p) => convertWanSpeed(p.avg_download_kbps, speedUnit)),
             lineStyle: { width: 2, color: pal.downColor },
             itemStyle: { color: pal.downColor },
             areaStyle: { opacity: 0.16, color: pal.downColor },
           },
           {
-            name: '平均上行 (KB/s)',
+            name: `平均上行 (${speedUnitLabel})`,
             type: 'line',
             smooth: true,
             showSymbol: false,
-            data: list.map((p) => p.avg_upload_kbps),
+            data: list.map((p) => convertWanSpeed(p.avg_upload_kbps, speedUnit)),
             lineStyle: { width: 2, color: pal.upColor },
             itemStyle: { color: pal.upColor },
             areaStyle: { opacity: 0.14, color: pal.upColor },
@@ -1024,7 +1092,7 @@ function renderWanChart(force = false) {
             itemStyle: { color: pal.warn },
           },
         ],
-  }, { replaceMerge: ['series'] })
+  }, modeChanged ? { notMerge: true } : { replaceMerge: ['series'] })
 }
 
 function renderLoadChart() {
@@ -1138,7 +1206,7 @@ function extractErr(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-watch([wanChartMode, palette], () => renderWanChart(true))
+watch([wanChartMode, wanSpeedUnit, palette], () => renderWanChart(true))
 watch([wanChartEl, () => overview.value?.wan_history], () => {
   if (wanChartEl.value && overview.value) renderWanChart(true)
 })
@@ -1158,6 +1226,7 @@ watch(
 )
 watch(routerEpoch, () => {
   lastWanRenderSig = ''
+  lastWanModeKey = ''
   loadData.value = null
   void refreshAll()
 })
