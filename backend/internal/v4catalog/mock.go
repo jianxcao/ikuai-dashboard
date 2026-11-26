@@ -85,15 +85,18 @@ func ensureMockStore() {
 		"qos-mac": {},
 		"acl-rules": {
 			{"id": 1, "tagname": "block-telnet", "action": "drop", "dir": "forward", "protocol": "tcp", "dst_port": map[string]any{"custom": []any{"23"}}, "prio": 10, "enabled": "yes"},
+			{"id": 2, "tagname": "allow-web-servers", "action": "accept", "dir": "forward", "protocol": "tcp", "src_addr": map[string]any{"custom": []any{}, "object": []any{"core_servers"}}, "dst_port": map[string]any{"custom": []any{}, "object": []any{"web_ports"}}, "prio": 20, "enabled": "yes", "comment": "放行核心服务器 Web 端口"},
 		},
 		"mac-rules": {
 			{"id": 1, "tagname": "trusted-server", "mac": "8E:F6:C5:99:8A:50", "comment": "核心 NAS", "enabled": "yes"},
 		},
-		"l7-rules":         {},
-		"url-black":        {{"id": 1, "tagname": "tracker-block", "domain": "ads.example.com", "mode": 0, "enabled": "yes"}},
-		"domain-blacklist": {},
+		"l7-rules":  {},
+		"url-black": {{"id": 1, "tagname": "tracker-block", "domain": "ads.example.com", "mode": 0, "enabled": "yes"}},
+		"domain-blacklist": {
+			{"id": 1, "tagname": "block-ads-group", "domain_group": "ads_domains", "enabled": "yes", "comment": "拦截广告域名分组"},
+		},
 		"peerconn-rules": {
-			{"id": 1, "tagname": "office-limit", "limits": 800, "protocol": "tcp", "src_addr": map[string]any{"custom": []any{"192.168.9.0/24"}}, "enabled": "yes"},
+			{"id": 1, "tagname": "office-limit", "limits": 800, "protocol": "tcp", "src_addr": map[string]any{"custom": []any{"192.168.9.0/24"}, "object": []any{"core_servers"}}, "enabled": "yes"},
 		},
 		"terminals": {
 			{"id": 1, "tagname": "群晖存储", "mac": "8E:F6:C5:99:8A:50", "comment": "机房机柜 A-02"},
@@ -133,11 +136,13 @@ func ensureMockStore() {
 		"ip-objects": {
 			{"id": 1, "group_name": "core_servers", "group_value": []any{map[string]any{"ip": "192.168.9.10"}, map[string]any{"ip": "192.168.9.20"}}, "value": "192.168.9.10,192.168.9.20", "comment": "核心服务器组"},
 		},
-		"ip6-objects":    {},
-		"mac-objects":    {},
-		"port-objects":   {{"id": 1, "group_name": "web_ports", "group_value": []any{map[string]any{"port": "80,443"}}, "value": "80,443", "comment": "Web 标准端口"}},
-		"domain-objects": {},
-		"proto-objects":  {{"id": 1, "group_name": "web_protos", "group_value": []any{map[string]any{"proto": "tcp"}, map[string]any{"proto": "udp"}}, "value": "tcp,udp", "comment": "基础传输协议"}},
+		"ip6-objects":  {},
+		"mac-objects":  {},
+		"port-objects": {{"id": 1, "group_name": "web_ports", "group_value": []any{map[string]any{"port": "80,443"}}, "value": "80,443", "comment": "Web 标准端口"}},
+		"domain-objects": {
+			{"id": 1, "group_name": "ads_domains", "group_value": []any{map[string]any{"domain": "ads.example.com"}, map[string]any{"domain": "track.example.net"}}, "value": "ads.example.com,track.example.net", "comment": "广告追踪域名组"},
+		},
+		"proto-objects": {{"id": 1, "group_name": "web_protos", "group_value": []any{map[string]any{"proto": "tcp"}, map[string]any{"proto": "udp"}}, "value": "tcp,udp", "comment": "基础传输协议"}},
 		"time-objects": {
 			{
 				"id": 1, "group_name": "work_hours",

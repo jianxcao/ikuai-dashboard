@@ -82,7 +82,7 @@
 
       <template v-else>
         <div v-if="spec?.fields?.length" class="fields-grid">
-          <label v-for="field in spec.fields" :key="field.key" class="field-item">
+          <div v-for="field in spec.fields" :key="field.key" class="field-item">
             <span class="field-label">{{ field.label }}</span>
             <select
               v-if="field.type === 'select' || field.type === 'switch'"
@@ -123,7 +123,16 @@
               :disabled="!canUpdate || readOnly"
               :placeholder="field.placeholder"
             />
-          </label>
+            <ObjectGroupFieldBar
+              v-if="field.type === 'csv' && fieldGroupKey(field.key)"
+              mode="compound"
+              :groupKey="fieldGroupKey(field.key)!"
+              :selectedGroups="formObjectRefs[field.key] || []"
+              :disabled="!canUpdate || readOnly"
+              @update:selectedGroups="(v) => (formObjectRefs[field.key] = v)"
+              @inspect="({ groupKey, groupName }) => openQuickGroupModal(groupKey, groupName)"
+            />
+          </div>
         </div>
 
         <div v-else class="kv-grid">
@@ -150,18 +159,29 @@
         </button>
       </footer>
     </template>
+
+    <ObjectGroupQuickModal
+      :open="quickGroupModal.open"
+      :groupKey="quickGroupModal.groupKey"
+      :groupName="quickGroupModal.groupName"
+      @close="quickGroupModal.open = false"
+      @saved="handleQuickGroupSaved"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Check, Eye, RefreshCw, Save, Terminal, Zap } from 'lucide-vue-next'
 import { executeV4Action, fetchV4Resource, updateV4Resource, type ActionSpec, type FieldSpec, type ResourceSpec } from '@/api/v4'
 import { useAuth } from '@/composables/useAuth'
 import { useCatalog } from '@/composables/useCatalog'
 import { useFleet } from '@/composables/useFleet'
 import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
+import ObjectGroupFieldBar from '@/components/common/ObjectGroupFieldBar.vue'
+import ObjectGroupQuickModal from '@/components/common/ObjectGroupQuickModal.vue'
 import { compoundToCSV } from '@/composables/useFormatters'
+import { extractCompoundParts, getFieldObjectGroup, loadObjectGroupList, type ObjectGroupKey } from '@/composables/useObjectGroups'
 
 const props = defineProps<{
   resourceKey: string
@@ -183,7 +203,29 @@ const rawJsonText = ref('{}')
 const spec = ref<ResourceSpec | null>(null)
 const configData = ref<Record<string, unknown>>({})
 const form = ref<Record<string, unknown>>({})
+const formObjectRefs = ref<Record<string, string[]>>({})
+const hadInitialObjectRefs = ref<Record<string, boolean>>({})
 const dryRunPreview = ref<Record<string, unknown> | null>(null)
+const quickGroupModal = reactive<{
+  open: boolean
+  groupKey: ObjectGroupKey | null
+  groupName: string
+}>({ open: false, groupKey: null, groupName: '' })
+
+function fieldGroupKey(fieldKey: string): ObjectGroupKey | null {
+  return getFieldObjectGroup(props.resourceKey, fieldKey)
+}
+
+function openQuickGroupModal(groupKey: ObjectGroupKey, groupName: string) {
+  quickGroupModal.groupKey = groupKey
+  quickGroupModal.groupName = groupName
+  quickGroupModal.open = true
+}
+
+function handleQuickGroupSaved(payload: { groupKey: ObjectGroupKey; groupName: string }) {
+  void loadObjectGroupList(payload.groupKey, true)
+  showToast('对象分组已同步更新')
+}
 
 const canUpdate = computed(() => spec.value?.operations?.includes('update') ?? false)
 const hasActions = computed(() => (spec.value?.actions?.length ?? 0) > 0)
@@ -227,10 +269,14 @@ function buildRawSnapshot(base: Record<string, unknown>, edits: Record<string, u
       continue
     }
     const orig = base[f.key]
-    if (f.type === 'csv' && orig && typeof orig === 'object' && !Array.isArray(orig)) {
-      const existingObj = Array.isArray((orig as { object?: unknown }).object)
-        ? (orig as { object: unknown[] }).object
-        : []
+    const gKey = fieldGroupKey(f.key)
+    const pickedRefs = formObjectRefs.value[f.key] || []
+    if (f.type === 'csv' && (gKey || (orig && typeof orig === 'object' && !Array.isArray(orig)))) {
+      const existingObj = gKey
+        ? [...pickedRefs]
+        : Array.isArray((orig as { object?: unknown } | undefined)?.object)
+          ? (orig as { object: unknown[] }).object
+          : []
       const customList = String(val ?? '')
         .split(',')
         .map((s) => s.trim())
@@ -247,11 +293,22 @@ function buildRawSnapshot(base: Record<string, unknown>, edits: Record<string, u
 
 function populateFormFromObject(obj: Record<string, unknown>, fields: FieldSpec[]) {
   const nextForm: Record<string, unknown> = {}
+  const nextRefs: Record<string, string[]> = {}
+  const nextHadRefs: Record<string, boolean> = {}
   for (const f of fields) {
     const raw = obj[f.key]
-    if (f.type === 'csv' && raw && typeof raw === 'object') {
-      nextForm[f.key] = compoundToCSV(raw)
-    } else if (f.type === 'password') {
+    if (f.type === 'csv') {
+      const parts = extractCompoundParts(raw)
+      if (fieldGroupKey(f.key)) {
+        nextRefs[f.key] = parts.objects
+        nextHadRefs[f.key] = parts.objects.length > 0
+      }
+      if (raw && typeof raw === 'object') {
+        nextForm[f.key] = compoundToCSV(raw)
+        continue
+      }
+    }
+    if (f.type === 'password') {
       nextForm[f.key] = ''
     } else if (f.type === 'select' || f.type === 'switch') {
       nextForm[f.key] = raw !== undefined && raw !== null ? String(raw) : (f.default ?? '')
@@ -260,6 +317,8 @@ function populateFormFromObject(obj: Record<string, unknown>, fields: FieldSpec[
     }
   }
   form.value = nextForm
+  formObjectRefs.value = nextRefs
+  hadInitialObjectRefs.value = nextHadRefs
 }
 
 function enterRawMode() {
@@ -329,6 +388,17 @@ async function submit(dryRun: boolean) {
         delete payload[f.key]
       } else if (f.type === 'number' && (val === '' || val === null || Number.isNaN(val))) {
         delete payload[f.key]
+      } else if (f.type === 'csv' && fieldGroupKey(f.key)) {
+        const selectedRefs = formObjectRefs.value[f.key] || []
+        if (selectedRefs.length > 0 || hadInitialObjectRefs.value[f.key]) {
+          payload[f.key] = {
+            custom: String(val ?? '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            object: [...selectedRefs],
+          }
+        }
       }
     }
   }

@@ -92,11 +92,39 @@
           v-model.trim="search"
           type="text"
           class="v4-input search-input"
+          :class="{ 'has-clear': Boolean(search) }"
           placeholder="搜索关键字、IP、MAC 或备注..."
           @keyup.enter="reload"
         />
+        <button
+          v-if="search"
+          type="button"
+          class="search-clear"
+          title="清空筛选"
+          aria-label="清空筛选"
+          @click="clearSearch"
+        >
+          <X :size="13" />
+        </button>
       </div>
       <div class="toolbar-right">
+        <span
+          v-if="tableSort.isSorted.value && spec?.supports_paging && total > pageSize"
+          class="v4-badge"
+          title="仅对当前分页已加载记录进行前端排序"
+        >
+          当前页排序
+        </span>
+        <button
+          v-if="tableSort.isSorted.value"
+          type="button"
+          class="v4-btn btn-xs"
+          title="恢复默认规则顺序"
+          @click="tableSort.resetSort()"
+        >
+          <RotateCcw :size="13" />
+          <span>默认顺序</span>
+        </button>
         <button type="button" class="v4-btn" :disabled="loading" @click="reload">
           <RefreshCw :size="14" :class="{ spin: loading }" />
           <span>刷新</span>
@@ -120,13 +148,35 @@
       <table v-else class="v4-table">
         <thead>
           <tr>
-            <th v-for="col in displayColumns" :key="col.key">{{ col.label }}</th>
+            <th
+              v-for="col in displayColumns"
+              :key="col.key"
+              class="sortable-th"
+              :class="{ 'is-sorted': tableSort.sortKey.value === col.key }"
+              :aria-sort="tableSort.ariaSort(col.key)"
+              tabindex="0"
+              @click="tableSort.toggleSort(col.key)"
+              @keydown.enter.prevent="tableSort.toggleSort(col.key)"
+              @keydown.space.prevent="tableSort.toggleSort(col.key)"
+            >
+              <span class="sort-th-inner">
+                <span>{{ col.label }}</span>
+                <SortIndicator :active="tableSort.sortKey.value === col.key" :dir="tableSort.sortDir.value" />
+              </span>
+            </th>
             <th class="actions-col">{{ isUpstreamReadOnly ? '详情' : '操作' }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, idx) in rows" :key="rowId(row, idx)">
-            <td v-for="col in displayColumns" :key="col.key" :class="{ 'font-mono': col.kind === 'mono' || col.kind === 'time' }">
+          <tr v-for="(row, idx) in sortedRows" :key="rowId(row, idx)">
+            <td
+              v-for="col in displayColumns"
+              :key="col.key"
+              :class="{
+                'font-mono': col.kind === 'mono' || col.kind === 'time',
+                'compound-td': col.kind === 'compound' || (resourceKey === 'domain-blacklist' && col.key === 'domain_group'),
+              }"
+            >
               <template v-if="col.kind === 'toggle'">
                 <button
                   type="button"
@@ -150,7 +200,35 @@
                 {{ formatBytes(Number(row[col.key])) }}
               </template>
               <template v-else-if="col.kind === 'compound'">
-                <span class="compound-chip">{{ formatCompoundValue(row[col.key]) }}</span>
+                <div
+                  v-if="colGroupKey(col.key) && compoundParts(row[col.key]).objects.length > 0"
+                  class="compound-rich"
+                >
+                  <span v-if="compoundParts(row[col.key]).custom.length > 0" class="compound-chip">
+                    {{ compoundParts(row[col.key]).custom.join(', ') }}
+                  </span>
+                  <button
+                    v-for="gName in compoundParts(row[col.key]).objects"
+                    :key="gName"
+                    type="button"
+                    class="obj-group-pill"
+                    title="点击快速查看/修改该分组，或跳转到对象分组页面"
+                    @click.stop="openQuickGroupModal(colGroupKey(col.key)!, gName)"
+                  >
+                    @{{ gName }}
+                  </button>
+                </div>
+                <span v-else class="compound-chip">{{ formatCompoundValue(row[col.key]) }}</span>
+              </template>
+              <template v-else-if="resourceKey === 'domain-blacklist' && col.key === 'domain_group' && String(row[col.key] ?? '').trim()">
+                <button
+                  type="button"
+                  class="obj-group-pill"
+                  title="点击快速查看/修改该域名对象组，或跳转到对象分组页面"
+                  @click.stop="openQuickGroupModal('domain-objects', String(row[col.key]))"
+                >
+                  @{{ row[col.key] }}
+                </button>
               </template>
               <template v-else>
                 {{ formatCell(row[col.key], col.kind, col.key) }}
@@ -283,7 +361,7 @@
 
             <template v-if="!rawJsonMode">
               <div class="form-grid">
-                <label v-for="field in spec?.fields || []" :key="field.key" class="form-field">
+                <div v-for="field in spec?.fields || []" :key="field.key" class="form-field">
                   <span class="field-label">
                     {{ field.label }}
                     <em v-if="field.required">*</em>
@@ -318,20 +396,31 @@
                     rows="4"
                     :placeholder="field.placeholder"
                   />
-                  <input
-                    v-else
-                    v-model="formState[field.key]"
-                    type="text"
-                    class="v4-input"
-                    :placeholder="field.placeholder"
+                  <ObjectGroupFieldBar
+                    v-else-if="resourceKey === 'domain-blacklist' && field.key === 'domain_group'"
+                    mode="single"
+                    groupKey="domain-objects"
+                    :singleValue="String(formState[field.key] ?? '')"
+                    @update:singleValue="(v) => (formState[field.key] = v)"
+                    @inspect="({ groupKey, groupName }) => openQuickGroupModal(groupKey, groupName)"
                   />
-                  <span
-                    v-if="field.type === 'csv' && compoundObjectRefs(field.key).length > 0"
-                    class="obj-ref-hint font-mono"
-                  >
-                    已关联对象组: {{ compoundObjectRefs(field.key).join(', ') }}（可视化保存将自动保留）
-                  </span>
-                </label>
+                  <template v-else>
+                    <input
+                      v-model="formState[field.key]"
+                      type="text"
+                      class="v4-input"
+                      :placeholder="field.placeholder"
+                    />
+                    <ObjectGroupFieldBar
+                      v-if="field.type === 'csv' && colGroupKey(field.key)"
+                      mode="compound"
+                      :groupKey="colGroupKey(field.key)!"
+                      :selectedGroups="formObjectRefs[field.key] || []"
+                      @update:selectedGroups="(v) => (formObjectRefs[field.key] = v)"
+                      @inspect="({ groupKey, groupName }) => openQuickGroupModal(groupKey, groupName)"
+                    />
+                  </template>
+                </div>
               </div>
             </template>
 
@@ -406,7 +495,21 @@
           <div v-if="refsModal.loading" class="loading-state"><div class="spinner" /></div>
           <div v-else-if="refsModal.error" class="error-banner">{{ refsModal.error }}</div>
           <div v-else-if="refsModal.rows.length === 0" class="empty-state">当前未被任何策略或分流规则引用</div>
-          <pre v-else class="json-pre font-mono">{{ JSON.stringify(refsModal.rows, null, 2) }}</pre>
+          <template v-else>
+            <div v-if="refJumpTargets.length > 0" class="ref-jump-bar">
+              <button
+                v-for="target in refJumpTargets"
+                :key="target.key"
+                type="button"
+                class="v4-btn btn-xs"
+                @click="jumpToRefModule(target.tab, target.key)"
+              >
+                <ExternalLink :size="12" />
+                <span>前往「{{ target.label }}」</span>
+              </button>
+            </div>
+            <pre class="json-pre font-mono">{{ JSON.stringify(refsModal.rows, null, 2) }}</pre>
+          </template>
         </div>
       </div>
     </teleport>
@@ -433,10 +536,10 @@
               <span class="field-label">MAC 地址</span>
               <input v-model="bindStatic.mac" class="v4-input font-mono" />
             </label>
-            <label class="form-field">
+            <div class="form-field">
               <span class="field-label">所属接口</span>
               <InterfaceSelect v-model="bindStatic.interface" scope="lan" />
-            </label>
+            </div>
           </div>
           <div class="confirm-actions">
             <button type="button" class="v4-btn" @click="bindStatic.open = false">取消</button>
@@ -499,15 +602,67 @@
             <table v-else class="v4-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>允许子网</th>
-                  <th>Endpoint</th>
-                  <th>启用</th>
+                  <th
+                    class="sortable-th"
+                    :class="{ 'is-sorted': peerSort.sortKey.value === 'id' }"
+                    :aria-sort="peerSort.ariaSort('id')"
+                    tabindex="0"
+                    @click="peerSort.toggleSort('id')"
+                    @keydown.enter.prevent="peerSort.toggleSort('id')"
+                    @keydown.space.prevent="peerSort.toggleSort('id')"
+                  >
+                    <span class="sort-th-inner">
+                      <span>ID</span>
+                      <SortIndicator :active="peerSort.sortKey.value === 'id'" :dir="peerSort.sortDir.value" />
+                    </span>
+                  </th>
+                  <th
+                    class="sortable-th"
+                    :class="{ 'is-sorted': peerSort.sortKey.value === 'allowips' }"
+                    :aria-sort="peerSort.ariaSort('allowips')"
+                    tabindex="0"
+                    @click="peerSort.toggleSort('allowips')"
+                    @keydown.enter.prevent="peerSort.toggleSort('allowips')"
+                    @keydown.space.prevent="peerSort.toggleSort('allowips')"
+                  >
+                    <span class="sort-th-inner">
+                      <span>允许子网</span>
+                      <SortIndicator :active="peerSort.sortKey.value === 'allowips'" :dir="peerSort.sortDir.value" />
+                    </span>
+                  </th>
+                  <th
+                    class="sortable-th"
+                    :class="{ 'is-sorted': peerSort.sortKey.value === 'endpoint' }"
+                    :aria-sort="peerSort.ariaSort('endpoint')"
+                    tabindex="0"
+                    @click="peerSort.toggleSort('endpoint')"
+                    @keydown.enter.prevent="peerSort.toggleSort('endpoint')"
+                    @keydown.space.prevent="peerSort.toggleSort('endpoint')"
+                  >
+                    <span class="sort-th-inner">
+                      <span>Endpoint</span>
+                      <SortIndicator :active="peerSort.sortKey.value === 'endpoint'" :dir="peerSort.sortDir.value" />
+                    </span>
+                  </th>
+                  <th
+                    class="sortable-th"
+                    :class="{ 'is-sorted': peerSort.sortKey.value === 'enabled' }"
+                    :aria-sort="peerSort.ariaSort('enabled')"
+                    tabindex="0"
+                    @click="peerSort.toggleSort('enabled')"
+                    @keydown.enter.prevent="peerSort.toggleSort('enabled')"
+                    @keydown.space.prevent="peerSort.toggleSort('enabled')"
+                  >
+                    <span class="sort-th-inner">
+                      <span>启用</span>
+                      <SortIndicator :active="peerSort.sortKey.value === 'enabled'" :dir="peerSort.sortDir.value" />
+                    </span>
+                  </th>
                   <th>删除</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="peer in peersModal.rows" :key="String(peer.id)">
+                <tr v-for="peer in sortedPeers" :key="String(peer.id)">
                   <td class="font-mono">{{ peer.id }}</td>
                   <td class="font-mono">{{ peer.allowips }}</td>
                   <td class="font-mono">{{ peer.endpoint ? `${peer.endpoint}:${peer.endpoint_port || 51820}` : '动态' }}</td>
@@ -535,6 +690,15 @@
       </div>
     </teleport>
 
+    <!-- Object Group Quick Edit & Jump Modal -->
+    <ObjectGroupQuickModal
+      :open="quickGroupModal.open"
+      :groupKey="quickGroupModal.groupKey"
+      :groupName="quickGroupModal.groupName"
+      @close="quickGroupModal.open = false"
+      @saved="handleQuickGroupSaved"
+    />
+
     <!-- Delete Confirmation Modal -->
     <teleport to="body">
       <div v-if="deleteTarget" class="drawer-backdrop center" @click.self="deleteTarget = null">
@@ -559,6 +723,7 @@ import {
   Braces,
   Check,
   Copy,
+  ExternalLink,
   Eye,
   FolderOpen,
   KeyRound,
@@ -568,6 +733,7 @@ import {
   Pin,
   Plus,
   RefreshCw,
+  RotateCcw,
   Save,
   Search,
   Terminal,
@@ -592,19 +758,27 @@ import {
   type ColumnSpec,
   type ResourceSpec,
 } from '@/api/v4'
+import { resolveResourceTab, useAppRoute } from '@/composables/useAppRoute'
 import { useAuth } from '@/composables/useAuth'
 import { useCatalog } from '@/composables/useCatalog'
 import { useFleet } from '@/composables/useFleet'
 import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
-import { compoundToCSV, formatBytes, formatCompoundValue, formatObjectRef, formatTimestamp } from '@/composables/useFormatters'
+import ObjectGroupFieldBar from '@/components/common/ObjectGroupFieldBar.vue'
+import ObjectGroupQuickModal from '@/components/common/ObjectGroupQuickModal.vue'
+import SortIndicator from '@/components/common/SortIndicator.vue'
+import { compoundToCSV, formatBytes, formatCompoundValue, formatTimestamp } from '@/composables/useFormatters'
+import { extractCompoundParts, getFieldObjectGroup, type ObjectGroupKey, useObjectGroups } from '@/composables/useObjectGroups'
+import { type SortValueHint, useTableSort } from '@/composables/useTableSort'
 
 const props = defineProps<{
   resourceKey: string
 }>()
 
+const { navigate } = useAppRoute()
 const { readOnly } = useAuth()
 const { getSpec } = useCatalog()
 const { routerEpoch } = useFleet()
+const { consumePendingGroupFilter, loadObjectGroupList } = useObjectGroups()
 
 const loading = ref(false)
 const loadFailed = ref(false)
@@ -630,8 +804,45 @@ const generatingKeys = ref(false)
 const rawJsonMode = ref(false)
 const rawJsonText = ref('{}')
 const formState = ref<Record<string, unknown>>({})
+const formObjectRefs = ref<Record<string, string[]>>({})
+const hadInitialObjectRefs = ref<Record<string, boolean>>({})
 const drawerError = ref<string | null>(null)
 const dryRunPreview = ref<Record<string, unknown> | null>(null)
+
+const quickGroupModal = reactive<{
+  open: boolean
+  groupKey: ObjectGroupKey | null
+  groupName: string
+}>({ open: false, groupKey: null, groupName: '' })
+
+const DESC_DEFAULT_KEYS = new Set([
+  'upload',
+  'download',
+  'up_speed',
+  'down_speed',
+  'speed',
+  'weight',
+  'limits',
+  'filesize',
+  'st_size',
+  'st_mtime',
+  'timestamp',
+  'auth_time',
+])
+
+const tableSort = useTableSort<string>({
+  defaultDirForKey: (key) => {
+    const col = displayColumns.value.find((c) => c.key === key)
+    if (col?.kind === 'bytes' || col?.kind === 'speed' || col?.kind === 'time' || col?.kind === 'toggle') {
+      return 'desc'
+    }
+    return DESC_DEFAULT_KEYS.has(key) ? 'desc' : 'asc'
+  },
+})
+
+const peerSort = useTableSort<'id' | 'allowips' | 'endpoint' | 'enabled'>({
+  defaultDirForKey: (key) => (key === 'enabled' ? 'desc' : 'asc'),
+})
 
 const inspectRow = ref<Record<string, unknown> | null>(null)
 const deleteTarget = ref<{ id?: string; srcfile?: string; label: string } | null>(null)
@@ -733,11 +944,89 @@ const displayColumns = computed<ColumnSpec[]>(() => {
     .map((key) => ({ key, label: key }))
 })
 
+function columnSortHint(key: string): SortValueHint {
+  const col = displayColumns.value.find((c) => c.key === key)
+  if (!col) return 'auto'
+  if (col.kind === 'toggle') return 'boolean'
+  if (col.kind === 'compound') return 'compound'
+  if (col.kind === 'bytes' || col.kind === 'speed' || col.kind === 'time') return 'number'
+  return 'auto'
+}
+
+const sortedRows = computed(() => {
+  const activeKey = tableSort.sortKey.value
+  if (!activeKey) return rows.value
+  if (props.resourceKey === 'system-files' && activeKey !== 'st_type') {
+    const dirs = rows.value.filter((r) => Number(r.st_type) === 0)
+    const files = rows.value.filter((r) => Number(r.st_type) !== 0)
+    return [
+      ...tableSort.sortRows(dirs, (r, k) => r[k], columnSortHint),
+      ...tableSort.sortRows(files, (r, k) => r[k], columnSortHint),
+    ]
+  }
+  return tableSort.sortRows(rows.value, (r, k) => r[k], columnSortHint)
+})
+
+const sortedPeers = computed(() =>
+  peerSort.sortRows(
+    peersModal.rows,
+    (peer, key) => {
+      if (key === 'endpoint') {
+        return peer.endpoint ? `${peer.endpoint}:${peer.endpoint_port || 51820}` : ''
+      }
+      return peer[key]
+    },
+    (key) => (key === 'enabled' ? 'boolean' : key === 'id' ? 'number' : 'auto')
+  )
+)
+
+const refJumpTargets = computed(() => {
+  const seen = new Set<string>()
+  const out: Array<{ key: string; label: string; tab: string }> = []
+  for (const r of refsModal.rows) {
+    const modKey = String(r.module ?? '').trim()
+    if (!modKey || seen.has(modKey)) continue
+    const targetSpec = getSpec(modKey)
+    if (!targetSpec) continue
+    seen.add(modKey)
+    out.push({ key: modKey, label: targetSpec.label, tab: resolveResourceTab(targetSpec.group) })
+  }
+  return out
+})
+
+function colGroupKey(fieldKey: string): ObjectGroupKey | null {
+  return getFieldObjectGroup(props.resourceKey, fieldKey)
+}
+
+function compoundParts(val: unknown) {
+  return extractCompoundParts(val)
+}
+
+function openQuickGroupModal(groupKey: ObjectGroupKey, groupName: string) {
+  quickGroupModal.groupKey = groupKey
+  quickGroupModal.groupName = groupName
+  quickGroupModal.open = true
+}
+
+function handleQuickGroupSaved(payload: { groupKey: ObjectGroupKey; groupName: string }) {
+  showToast('对象分组已更新并同步')
+  void loadObjectGroupList(payload.groupKey, true)
+  void reload()
+}
+
+function jumpToRefModule(tab: string, key: string) {
+  refsModal.open = false
+  navigate(tab, key)
+}
+
 function rowId(row: Record<string, unknown>, idx: number): string {
   if (row.id !== undefined && row.id !== null) return String(row.id)
   if (row.filename !== undefined) return String(row.filename)
   if (row.f_name !== undefined) return String(row.f_name)
-  return String(idx)
+  if (row.name !== undefined) return String(row.name)
+  if (row.group_name !== undefined) return String(row.group_name)
+  const rawIdx = rows.value.indexOf(row)
+  return String(rawIdx >= 0 ? rawIdx : idx)
 }
 
 function isTruthy(val: unknown): boolean {
@@ -793,8 +1082,15 @@ async function reload() {
   }
 }
 
+function clearSearch() {
+  search.value = ''
+  page.value = 1
+  void reload()
+}
+
 function goPath(p: string) {
   filePath.value = p || '/'
+  tableSort.resetSort()
   void reload()
 }
 
@@ -803,6 +1099,7 @@ function goParentPath() {
   const parts = filePath.value.split('/').filter(Boolean)
   parts.pop()
   filePath.value = parts.length ? '/' + parts.join('/') : '/'
+  tableSort.resetSort()
   void reload()
 }
 
@@ -810,6 +1107,7 @@ function enterFolder(name: string) {
   if (!name) return
   const base = filePath.value === '/' ? '' : filePath.value.replace(/\/+$/, '')
   filePath.value = `${base}/${name}`
+  tableSort.resetSort()
   void reload()
 }
 
@@ -866,13 +1164,6 @@ async function handleToggle(row: Record<string, unknown>) {
   }
 }
 
-function compoundObjectRefs(fieldKey: string): string[] {
-  const val = editingRow.value?.[fieldKey]
-  if (!val || typeof val !== 'object' || Array.isArray(val)) return []
-  const objs = (val as { object?: unknown[] }).object
-  return Array.isArray(objs) ? objs.map(formatObjectRef).filter(Boolean) : []
-}
-
 function openCreateDrawer() {
   editingId.value = null
   editingRow.value = null
@@ -880,12 +1171,34 @@ function openCreateDrawer() {
   drawerError.value = null
   dryRunPreview.value = null
   const init: Record<string, unknown> = {}
+  const initRefs: Record<string, string[]> = {}
+  const initHadRefs: Record<string, boolean> = {}
   for (const field of spec.value?.fields || []) {
     init[field.key] = field.default ?? ''
+    if (field.type === 'csv' && colGroupKey(field.key)) {
+      initRefs[field.key] = []
+      initHadRefs[field.key] = false
+    }
   }
   formState.value = init
+  formObjectRefs.value = initRefs
+  hadInitialObjectRefs.value = initHadRefs
   rawJsonText.value = JSON.stringify(buildRawPayloadFromForm(init), null, 2)
   drawerOpen.value = true
+}
+
+function syncFormObjectRefs(row: Record<string, unknown> | null) {
+  const nextRefs: Record<string, string[]> = {}
+  const nextHadRefs: Record<string, boolean> = {}
+  for (const field of spec.value?.fields || []) {
+    if (field.type === 'csv' && colGroupKey(field.key)) {
+      const objects = row ? extractCompoundParts(row[field.key]).objects : []
+      nextRefs[field.key] = objects
+      nextHadRefs[field.key] = objects.length > 0
+    }
+  }
+  formObjectRefs.value = nextRefs
+  hadInitialObjectRefs.value = nextHadRefs
 }
 
 function mapRowToFormState(row: Record<string, unknown>): Record<string, unknown> {
@@ -911,6 +1224,7 @@ function openEditDrawer(row: Record<string, unknown>) {
   rawJsonMode.value = false
   drawerError.value = null
   dryRunPreview.value = null
+  syncFormObjectRefs(row)
   const init = mapRowToFormState(row)
   formState.value = init
   rawJsonText.value = JSON.stringify(buildRawPayloadFromForm(init), null, 2)
@@ -928,19 +1242,24 @@ function buildRawPayloadFromForm(edits: Record<string, unknown>): Record<string,
       continue
     }
     const orig = editingRow.value?.[field.key]
-    if (field.type === 'csv' && orig && typeof orig === 'object' && !Array.isArray(orig)) {
-      const hasCompoundShape = 'custom' in orig || 'object' in orig
-      if (hasCompoundShape) {
-        const existingObj = Array.isArray((orig as { object?: unknown }).object)
+    const gKey = colGroupKey(field.key)
+    const selectedRefs = formObjectRefs.value[field.key] || []
+    if (
+      field.type === 'csv' &&
+      ((gKey && (selectedRefs.length > 0 || hadInitialObjectRefs.value[field.key])) ||
+        (orig && typeof orig === 'object' && !Array.isArray(orig) && ('custom' in orig || 'object' in orig)))
+    ) {
+      const existingObj = gKey
+        ? [...selectedRefs]
+        : Array.isArray((orig as { object?: unknown } | undefined)?.object)
           ? (orig as { object: unknown[] }).object
           : []
-        const customList = String(val ?? '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-        base[field.key] = { custom: customList, object: existingObj }
-        continue
-      }
+      const customList = String(val ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      base[field.key] = { custom: customList, object: existingObj }
+      continue
     }
     if (val !== undefined) {
       base[field.key] = val
@@ -1029,6 +1348,7 @@ function exitRawJson() {
   if (prevRow) {
     editingRow.value = mergedRow
   }
+  syncFormObjectRefs(mergedRow)
   const nextForm = mapRowToFormState(mergedRow)
   for (const field of spec.value?.fields || []) {
     if (
@@ -1089,6 +1409,17 @@ async function submitForm(dryRun: boolean) {
         delete payload[field.key]
       } else if (field.type === 'number' && (val === '' || val === null || Number.isNaN(val))) {
         delete payload[field.key]
+      } else if (field.type === 'csv' && colGroupKey(field.key)) {
+        const selectedRefs = formObjectRefs.value[field.key] || []
+        if (selectedRefs.length > 0 || hadInitialObjectRefs.value[field.key]) {
+          payload[field.key] = {
+            custom: String(val ?? '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            object: [...selectedRefs],
+          }
+        }
       }
     }
   }
@@ -1213,6 +1544,7 @@ async function openPeersModal(row: Record<string, unknown>) {
   peersModal.wgId = String(row.id ?? '')
   peersModal.wgName = String(row.name ?? peersModal.wgId)
   peersModal.error = null
+  peerSort.resetSort()
   await reloadPeers()
 }
 
@@ -1289,8 +1621,9 @@ watch(
   [() => props.resourceKey, routerEpoch],
   () => {
     page.value = 1
-    search.value = ''
+    search.value = consumePendingGroupFilter(props.resourceKey) ?? ''
     filePath.value = '/'
+    tableSort.resetSort()
     spec.value = getSpec(props.resourceKey) || null
     rows.value = []
     total.value = 0
@@ -1423,6 +1756,39 @@ watch(
   padding-left: 34px;
 }
 
+.search-input.has-clear {
+  padding-right: 30px;
+}
+
+.search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  background: var(--surface-hover);
+  color: var(--text-strong);
+}
+
+.toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--divider-line);
@@ -1457,9 +1823,23 @@ watch(
   text-overflow: ellipsis;
 }
 
-.v4-table td.actions-col {
+.v4-table td.actions-col,
+.v4-table td.compound-td {
   max-width: none;
   overflow: visible;
+}
+
+.compound-rich {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.ref-jump-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .v4-table tbody tr:last-child td {
@@ -1756,12 +2136,6 @@ watch(
 
 .spin {
   animation: spin 0.9s linear infinite;
-}
-
-.obj-ref-hint {
-  font-size: 11px;
-  color: var(--accent-text);
-  margin-top: 2px;
 }
 
 @media (max-width: 640px) {
