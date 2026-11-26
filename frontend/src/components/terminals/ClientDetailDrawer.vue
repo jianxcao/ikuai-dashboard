@@ -134,6 +134,7 @@ async function loadDetail(client: ClientRecordDTO) {
     const res = await fetchV4ClientDetail(client.ip_addr, client.mac)
     if (seq !== reqSeq) return
     detail.value = res
+    loading.value = false
     await nextTick()
     if (seq !== reqSeq) return
     renderChart()
@@ -166,7 +167,7 @@ watch(
   { immediate: true }
 )
 
-watch(palette, () => {
+watch([palette, chartEl], () => {
   if (detail.value && chartEl.value) renderChart()
 })
 
