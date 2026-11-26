@@ -257,10 +257,28 @@ export interface OptionItem {
   value: string
 }
 
+export type InterfaceScope = 'wan' | 'wan-all' | 'wan-auto' | 'wan-lan' | 'lan' | 'any' | 'physical-all'
+
+export interface InterfaceOptionItem {
+  name: string
+  kind: 'wan' | 'lan' | 'vlan' | 'physical'
+  ip?: string
+  proto?: string
+  comment?: string
+  detail?: string
+}
+
+export interface InterfaceOptionsDTO {
+  wan: InterfaceOptionItem[]
+  lan: InterfaceOptionItem[]
+  physical: InterfaceOptionItem[]
+}
+
 export interface FieldSpec {
   key: string
   label: string
   type: 'text' | 'number' | 'select' | 'switch' | 'textarea' | 'csv' | 'password'
+  interface_scope?: InterfaceScope
   required?: boolean
   default?: unknown
   placeholder?: string
@@ -349,6 +367,11 @@ export async function saveRoutersApi(payload: {
 
 export async function fetchV4Overview(): Promise<OverviewDTO> {
   const res = await http.get('/v4/overview')
+  return res.data
+}
+
+export async function fetchV4InterfaceOptions(): Promise<InterfaceOptionsDTO> {
+  const res = await http.get('/v4/interfaces/options')
   return res.data
 }
 

@@ -146,7 +146,7 @@
               <Cpu :size="16" />
               <h3>计算与内存负载</h3>
             </div>
-            <span class="v4-badge font-mono" v-if="overview.cpu.freq_mhz.length">
+            <span class="v4-badge font-mono" v-if="overview.cpu?.freq_mhz?.length">
               {{ overview.cpu.freq_mhz[0] }} MHz
             </span>
           </div>
@@ -155,10 +155,10 @@
             <div class="hw-block">
               <div class="hw-label-row">
                 <span>CPU 综合负载</span>
-                <strong class="font-mono">{{ overview.cpu.avg_percent.toFixed(2) }}%</strong>
+                <strong class="font-mono">{{ (overview.cpu?.avg_percent ?? 0).toFixed(2) }}%</strong>
               </div>
               <div class="core-bars">
-                <div v-for="(val, idx) in overview.cpu.cores" :key="idx" class="core-row">
+                <div v-for="(val, idx) in overview.cpu?.cores || []" :key="idx" class="core-row">
                   <span class="font-mono core-idx">Core {{ idx }}</span>
                   <div class="bar-track">
                     <div class="bar-fill accent" :style="{ width: `${Math.min(100, Math.max(2, val))}%` }" />
@@ -193,14 +193,14 @@
               <h3>物理网口面板 (ether_info)</h3>
             </div>
             <div class="pill-group">
-              <span class="v4-badge font-mono">{{ overview.physical_ports.length }} Ports</span>
+              <span class="v4-badge font-mono">{{ overview.physical_ports?.length ?? 0 }} Ports</span>
               <button type="button" class="mini-pill" @click="emit('navigate', { tab: 'network', subResource: 'physical-nics' })">网口配置</button>
             </div>
           </div>
 
           <div class="port-matrix">
             <div
-              v-for="port in overview.physical_ports"
+              v-for="port in overview.physical_ports || []"
               :key="port.name"
               class="port-slot"
               :class="{ linked: port.link === 1 }"
@@ -279,7 +279,7 @@
             </div>
           </div>
           <div class="wan-list">
-            <div v-for="w in overview.wan_checks" :key="w.interface" class="wan-row">
+            <div v-for="w in overview.wan_checks || []" :key="w.interface" class="wan-row">
               <div class="wan-head">
                 <div class="wan-title">
                   <strong class="font-mono">{{ w.interface }}</strong>
@@ -319,7 +319,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="iface in overview.interface_traffic" :key="iface.interface">
+                <tr v-for="iface in overview.interface_traffic || []" :key="iface.interface">
                   <td class="font-mono"><strong>{{ iface.interface }}</strong></td>
                   <td class="font-mono">{{ iface.ip_addr || '—' }}</td>
                   <td class="font-mono ic-up">{{ formatSpeed(iface.upload_bps) }}</td>
@@ -479,8 +479,59 @@ function renderWanChart(force = false) {
     resizeObserver?.observe(wanChartEl.value)
   }
   const pal = palette.value
-  const points = overview.value.wan_history.filter((p) => p.interface === 'all')
-  const list = points.length > 0 ? points : overview.value.wan_history
+  const history = overview.value.wan_history || []
+  const points = history.filter((p) => p.interface === 'all')
+  let list = points
+  if (list.length === 0 && history.length > 0) {
+    const byTs = new Map<
+      number,
+      {
+        timestamp: number
+        interface: string
+        avg_upload_kbps: number
+        avg_download_kbps: number
+        max_upload_kbps: number
+        max_download_kbps: number
+        avg_rtt_ms: number
+        max_rtt_ms: number
+        min_rtt_ms: number
+        drop_rate: number
+        rttSum: number
+        rttCount: number
+      }
+    >()
+    for (const p of history) {
+      const existing = byTs.get(p.timestamp)
+      if (!existing) {
+        byTs.set(p.timestamp, {
+          ...p,
+          interface: 'all',
+          rttSum: p.avg_rtt_ms > 0 ? p.avg_rtt_ms : 0,
+          rttCount: p.avg_rtt_ms > 0 ? 1 : 0,
+        })
+      } else {
+        existing.avg_upload_kbps += p.avg_upload_kbps
+        existing.avg_download_kbps += p.avg_download_kbps
+        existing.max_upload_kbps += p.max_upload_kbps
+        existing.max_download_kbps += p.max_download_kbps
+        if (p.avg_rtt_ms > 0) {
+          existing.rttSum += p.avg_rtt_ms
+          existing.rttCount += 1
+        }
+        if (p.max_rtt_ms > existing.max_rtt_ms) {
+          existing.max_rtt_ms = p.max_rtt_ms
+        }
+      }
+    }
+    list = Array.from(byTs.values())
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map((item) => ({
+        ...item,
+        avg_upload_kbps: Math.round(item.avg_upload_kbps * 100) / 100,
+        avg_download_kbps: Math.round(item.avg_download_kbps * 100) / 100,
+        avg_rtt_ms: item.rttCount > 0 ? Math.round((item.rttSum / item.rttCount) * 100) / 100 : 0,
+      }))
+  }
   const lastTs = list[list.length - 1]?.timestamp ?? 0
   const sig = `${wanChartMode.value}|${pal.downColor}|${pal.upColor}|${list.length}|${lastTs}`
   if (!force && sig === lastWanRenderSig) return

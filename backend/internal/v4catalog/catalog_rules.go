@@ -23,7 +23,7 @@ func routingAndQosSpecs() []ResourceSpec {
 				{Key: "dst_addr", Label: "目标地址", Type: "text", Required: true, Placeholder: "10.20.0.0"},
 				{Key: "netmask", Label: "子网掩码", Type: "text", Required: true, Default: "255.255.255.0"},
 				{Key: "gateway", Label: "下一跳网关", Type: "text", Required: true, Placeholder: "192.168.9.2"},
-				{Key: "interface", Label: "出接口", Type: "text", Required: true, Default: "wan1"},
+				{Key: "interface", Label: "出接口", Type: "text", InterfaceScope: "wan-lan", Required: true, Default: "wan1"},
 				{Key: "prio", Label: "优先级", Type: "number", Default: 10},
 				enabledField(),
 				commentField(),
@@ -49,7 +49,7 @@ func routingAndQosSpecs() []ResourceSpec {
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
 				{Key: "domain", Label: "域名列表 (逗号分隔)", Type: "csv", Required: true, Placeholder: "example.com,cdn.example.net"},
-				{Key: "interface", Label: "出口线路", Type: "text", Required: true, Default: "wan1"},
+				{Key: "interface", Label: "出口线路", Type: "text", InterfaceScope: "wan", Required: true, Default: "wan1"},
 				{Key: "src_addr", Label: "源 IP 过滤", Type: "csv", Placeholder: "留空匹配全部"},
 				{Key: "prio", Label: "优先级", Type: "number", Default: 31},
 				enabledField(),
@@ -76,7 +76,7 @@ func routingAndQosSpecs() []ResourceSpec {
 			},
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
-				{Key: "interface", Label: "出口线路", Type: "text", Required: true, Default: "wan1"},
+				{Key: "interface", Label: "出口线路", Type: "text", InterfaceScope: "wan", Required: true, Default: "wan1"},
 				{Key: "protocol", Label: "协议", Type: "select", Default: "any", Options: []OptionItem{
 					{Label: "ANY", Value: "any"}, {Label: "TCP", Value: "tcp"}, {Label: "UDP", Value: "udp"}, {Label: "TCP+UDP", Value: "tcp+udp"},
 				}},
@@ -113,7 +113,7 @@ func routingAndQosSpecs() []ResourceSpec {
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
 				{Key: "app_proto", Label: "应用协议 (逗号分隔)", Type: "csv", Required: true, Placeholder: "DNS,HTTP"},
-				{Key: "interface", Label: "出口线路", Type: "text", Required: true, Default: "wan1"},
+				{Key: "interface", Label: "出口线路", Type: "text", InterfaceScope: "wan", Required: true, Default: "wan1"},
 				{Key: "src_addr", Label: "源地址", Type: "csv"},
 				{Key: "prio", Label: "优先级", Type: "number", Default: 31},
 				enabledField(),
@@ -138,7 +138,7 @@ func routingAndQosSpecs() []ResourceSpec {
 			},
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
-				{Key: "interface", Label: "出口线路", Type: "text", Required: true, Default: "wan1"},
+				{Key: "interface", Label: "出口线路", Type: "text", InterfaceScope: "wan", Required: true, Default: "wan1"},
 				{Key: "mode", Label: "模式", Type: "select", Default: "0", Options: []OptionItem{
 					{Label: "源IP+目的IP (0)", Value: "0"}, {Label: "按带宽比例 (1)", Value: "1"}, {Label: "源IP (2)", Value: "2"},
 				}},
@@ -166,8 +166,8 @@ func routingAndQosSpecs() []ResourceSpec {
 			},
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
-				{Key: "upiface", Label: "上行线路", Type: "text", Required: true, Default: "wan1"},
-				{Key: "downiface", Label: "下行线路", Type: "text", Required: true, Default: "wan2"},
+				{Key: "upiface", Label: "上行线路", Type: "text", InterfaceScope: "wan", Required: true, Default: "wan1"},
+				{Key: "downiface", Label: "下行线路", Type: "text", InterfaceScope: "wan", Required: true, Default: "wan2"},
 				{Key: "protocol", Label: "协议", Type: "select", Default: "any", Options: []OptionItem{
 					{Label: "ANY", Value: "any"}, {Label: "TCP", Value: "tcp"}, {Label: "UDP", Value: "udp"},
 				}},
@@ -197,7 +197,7 @@ func routingAndQosSpecs() []ResourceSpec {
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
 				{Key: "ip_addr", Label: "IP 地址 (逗号分隔)", Type: "csv", Required: true, Placeholder: "192.168.9.100"},
-				{Key: "interface", Label: "生效接口", Type: "text", Required: true, Default: "wan1"},
+				{Key: "interface", Label: "生效接口", Type: "text", InterfaceScope: "wan-all", Required: true, Default: "wan1"},
 				{Key: "upload", Label: "上行限速 (Kbps)", Type: "number", Required: true, Default: 1000},
 				{Key: "download", Label: "下行限速 (Kbps)", Type: "number", Required: true, Default: 1000},
 				{Key: "protocol", Label: "协议", Type: "select", Default: "any", Options: []OptionItem{
@@ -227,7 +227,7 @@ func routingAndQosSpecs() []ResourceSpec {
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true},
 				{Key: "mac_addr", Label: "MAC 地址 (逗号分隔)", Type: "csv", Required: true, Placeholder: "AA:BB:CC:DD:EE:FF"},
-				{Key: "interface", Label: "生效接口", Type: "text", Required: true, Default: "wan1"},
+				{Key: "interface", Label: "生效接口", Type: "text", InterfaceScope: "wan-all", Required: true, Default: "wan1"},
 				{Key: "upload", Label: "上行限速 (Kbps)", Type: "number", Required: true, Default: 500},
 				{Key: "download", Label: "下行限速 (Kbps)", Type: "number", Required: true, Default: 500},
 				enabledField(),
@@ -265,6 +265,8 @@ func securitySpecs() []ResourceSpec {
 				{Key: "dir", Label: "方向", Type: "select", Default: "forward", Options: []OptionItem{
 					{Label: "转发 (forward)", Value: "forward"}, {Label: "入站 (in)", Value: "in"}, {Label: "出站 (out)", Value: "out"},
 				}},
+				{Key: "iinterface", Label: "入接口", Type: "text", InterfaceScope: "any", Default: "any"},
+				{Key: "ointerface", Label: "出接口", Type: "text", InterfaceScope: "any", Default: "any"},
 				{Key: "protocol", Label: "协议", Type: "select", Default: "tcp", Options: []OptionItem{
 					{Label: "ANY", Value: "any"}, {Label: "TCP", Value: "tcp"}, {Label: "UDP", Value: "udp"}, {Label: "ICMP", Value: "icmp"},
 				}},

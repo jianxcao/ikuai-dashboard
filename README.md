@@ -15,6 +15,7 @@
   - `te-industrial`：机械橙工控 · 硬件（Hardware Precision 实体仪表锐利轮廓）
 - **安全鉴权与写保护模式**：
   - 支持控制台管理员登录（HMAC-SHA256 Session Token），可通过 `USER_NAME` / `PASSWORD` 或 `config.yaml` 配置凭据，开发态默认 `admin` / `admin`（设置 `DISABLE_AUTH=true` 可跳过登录）。
+  - 支持 **外部 API Token 与 `/api/v1/ip`**：可在界面生成静态 `Access Token`，供 DDNS 或自动化脚本直接获取指定节点、指定 WAN 口的纯文本出口 IP。
   - 支持 **只读保护双防线**：后端设置 `READ_ONLY=true` 或 `server.read_only: true` 拒绝除登录、测活与 `?dry_run=true` 外的所有写入接口（返回 HTTP `403`）；前端顶部栏内置「写保护锁」可随时本地锁定危险写入操作。
 - **全模块交互式管理（对齐 `ikuai-cli`）**：
   1. **总览驾驶舱**：硬件负载、`ether_info` 网口面板、WAN 健康检查、双时序图表，以及一键「同步 NTP / 立即备份 / 检查更新 / 重启 DHCP」。
@@ -28,7 +29,97 @@
   9. **系统维护与高级服务**：基础与 NTP、远程访问、BBR 内核调优、CPU 调频、ALG、定时重启、VRRP、备份快照/自动备份、升级检查、磁盘、文件目录浏览、FTP/HTTP/Samba/SNMPD、Web 管理角色组与账号。
   10. **`⌘K / Ctrl+K` 命令面板**：按中文模块名或 `ikuai-cli` 命令即时检索直达，表格与配置卡片均支持完整 JSON 检查器与可编辑 Raw JSON 视图。
 
-## 快速启动
+## Docker Compose 部署（推荐）
+
+本仓库根目录已提供 [`docker-compose.yml`](docker-compose.yml)，支持 `linux/amd64` 与 `linux/arm64` 双架构镜像 `jianxcao/ikuai-dashboard-v4`：
+
+```yaml
+services:
+  ikuai-dashboard-v4:
+    image: jianxcao/ikuai-dashboard-v4:latest
+    container_name: ikuai-dashboard-v4
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # 注意：请使用全新目录，切勿直接挂载旧版 (main/V3) 的 config.yaml
+      - ./config:/config
+    environment:
+      TZ: Asia/Shanghai
+      PUID: "1000"
+      PGID: "1000"
+      USER_NAME: admin
+      PASSWORD: change_me_please
+      # SESSION_SECRET: "replace-with-a-random-secret"
+      # READ_ONLY: "false"
+```
+
+启动服务：
+
+```sh
+docker compose up -d
+```
+
+或使用 `docker run` 单命令启动：
+
+```sh
+docker run -d \
+  --name ikuai-dashboard-v4 \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v $(pwd)/config:/config \
+  -e TZ=Asia/Shanghai \
+  -e USER_NAME=admin \
+  -e PASSWORD=change_me_please \
+  jianxcao/ikuai-dashboard-v4:latest
+```
+
+首次启动如果 `/config/config.yaml` 不存在，容器会自动复制默认模板；随后打开 `http://<宿主机IP>:8080`，在 **「多节点与主题 → 新增 V4 路由器」** 中填入爱快 4.x 的 URL 与 API Token 即可（Token 生成位置：爱快后台「高级设置 → 系统设置 → API Token」）。
+
+### 从旧版（`main` / V3）迁移注意事项
+
+1. **镜像名已独立**：V4 使用 **`jianxcao/ikuai-dashboard-v4`**，与旧版 `jianxcao/ikuai-dashboard` 完全隔离，可同时部署或独立升级。
+2. **切勿直接挂载旧版 `config.yaml`**：容器内挂载路径仍为 `/config`、端口仍为 `8080`，但 V4 配置启用了严格的未知字段检查并仅支持纯 V4 API Token（`routers[].token`）；旧版 `routers[].username`、`password`、`version` 等字段会导致启动报错。请挂载新的宿主机目录（例如 `./config:/config`）并在界面中重新添加 V4 节点。
+3. **环境变量变更**：如不通过配置文件而是通过环境变量接入单台路由器，需使用 `IKUAI_URL`（或 `IKUAI_CLI_BASE_URL`）+ `IKUAI_TOKEN`（或 `IKUAI_CLI_TOKEN`），原旧版的 `IKUAI_USERNAME` / `IKUAI_PASSWORD` 已不再使用。
+
+## 环境变量说明
+
+| 变量名 | 默认值 | 说明 |
+|---|---|---|
+| `USER_NAME` | `admin` | 控制台登录用户名（优先级高于 `config.yaml` 中的 `server.username`） |
+| `PASSWORD` | `admin` | 控制台登录密码（优先级高于 `config.yaml` 中的 `server.password`） |
+| `SESSION_SECRET` | 进程随机盐 | 登录 Session 签名密钥；设置固定值后容器重启不会使已登录浏览器失效 |
+| `SESSION_TTL_DAYS` | `365` | 登录 Session 有效期（天） |
+| `DISABLE_AUTH` | `false` | 设为 `true` 跳过所有接口认证（仅建议受信任内网使用） |
+| `READ_ONLY` | `false` | 设为 `true` 开启服务端强制只读保护（拒绝所有非 `GET` 写入，仍放行测试与 `?dry_run=true`） |
+| `PORT` | `8080` | 后端 HTTP 监听端口 |
+| `IKUAI_CONFIG` | `config.yaml`（容器内 `/config/config.yaml`） | 配置文件路径 |
+| `PUID` / `PGID` / `UMASK` / `TZ` | `1000` / `1000` / `022` / UTC | 容器内运行用户 UID/GID、掩码与时区 |
+| `IKUAI_URL` / `IKUAI_CLI_BASE_URL` | 空 | 单节点环境变量接入时的爱快 V4 地址（当 `routers` 为空时生效，仅驻留内存） |
+| `IKUAI_TOKEN` / `IKUAI_CLI_TOKEN` | 空 | 单节点环境变量接入时的爱快 V4 API Token |
+| `IKUAI_NAME` | `环境变量节点 (V4)` | 单节点环境变量接入时的显示名称 |
+| `MOCK_MODE` | `false` | 设为 `true` 启用内置双节点高保真模拟模式（无需真机） |
+
+## 外部 API：获取指定节点与 WAN 口出口 IP（`/api/v1/ip`）
+
+V4 保留了旧版的纯文本出口 IP 查询接口，适合 DDNS 或自动化脚本调用。先在控制台 **「多节点与主题 → 读写安全锁与访问认证保护」** 中生成并复制 **访问 Token**（对应 `config.yaml` 中的 `server.access_token`）：
+
+```sh
+# 获取指定节点默认 WAN 口纯文本 IP（name 可传节点 ID 或节点名称）
+curl "http://localhost:8080/api/v1/ip?name=main&token=<ACCESS_TOKEN>"
+
+# 获取指定节点 wan2 口纯文本 IP（也兼容旧版 lan=wan2 参数）
+curl "http://localhost:8080/api/v1/ip?name=main&wan=wan2&token=<ACCESS_TOKEN>"
+
+# 返回结构化 JSON 详情
+curl "http://localhost:8080/api/v1/ip?router_id=main&wan=wan1&format=json&token=<ACCESS_TOKEN>"
+```
+
+- **节点参数**：支持 `name`、`router_id`、`id` 或请求头 `X-Router-ID`（均支持节点 ID 或名称匹配；不传时默认取当前激活节点）。
+- **线路参数**：支持 `wan`、`interface`、`iface`、`lan`（不传时默认取第一个有有效 IP 的 WAN 口）。
+- **认证方式**：支持 `?token=<ACCESS_TOKEN>` 或请求头 `Authorization: Bearer <ACCESS_TOKEN>`。
+
+## 本地开发与快速启动
 
 ### 1. 模拟模式（无需真机，内置双 V4 节点）
 

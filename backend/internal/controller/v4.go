@@ -28,6 +28,21 @@ func GetV4OverviewHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data})
 }
 
+// GetV4InterfaceOptionsHandler GET /api/v1/v4/interfaces/options
+func GetV4InterfaceOptionsHandler(c *gin.Context) {
+	router, client, err := resolveRouterForRequest(c)
+	if err != nil {
+		respondV4Error(c, "v4-interface-options", err)
+		return
+	}
+	data, err := v4service.GetInterfaceOptions(c.Request.Context(), router, client)
+	if err != nil {
+		respondV4Error(c, "v4-interface-options", err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"code": 200, "data": data})
+}
+
 // GetV4LoadHistoryHandler GET /api/v1/v4/monitor/load
 func GetV4LoadHistoryHandler(c *gin.Context) {
 	router, client, err := resolveRouterForRequest(c)

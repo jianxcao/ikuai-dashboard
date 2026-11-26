@@ -253,6 +253,11 @@ func GetOverview(ctx context.Context, router config.RouterConfig, client *ikuaiv
 			Name: router.Name,
 			Mock: false,
 		},
+		CPU: CPUSummaryDTO{
+			Cores:   []float64{},
+			FreqMHz: []int64{},
+			Temps:   []float64{},
+		},
 		WanChecks:        []WanCheckDTO{},
 		InterfaceTraffic: []InterfaceTrafficDTO{},
 		PhysicalPorts:    []PhysicalPortDTO{},
@@ -329,12 +334,14 @@ func GetOverview(ctx context.Context, router config.RouterConfig, client *ikuaiv
 		dto.Router.BuildDate = ikuaiv4.Str(ver, "build_date")
 	}
 
-	if cpuArr, ok := sys["cpu"].([]any); ok {
-		for _, item := range cpuArr {
-			dto.CPU.Cores = append(dto.CPU.Cores, ikuaiv4.ToFloat64(item))
+	if cpuArr, ok := sys["cpu"].([]any); ok && len(cpuArr) > 0 {
+		dto.CPU.AvgPercent = ikuaiv4.ToFloat64(cpuArr[0])
+		coreSlice := cpuArr
+		if len(cpuArr) > 1 {
+			coreSlice = cpuArr[1:]
 		}
-		if len(dto.CPU.Cores) > 0 {
-			dto.CPU.AvgPercent = dto.CPU.Cores[0]
+		for _, item := range coreSlice {
+			dto.CPU.Cores = append(dto.CPU.Cores, ikuaiv4.ToFloat64(item))
 		}
 	}
 	if freqArr, ok := sys["freq"].([]any); ok {
@@ -443,16 +450,23 @@ func GetOverview(ctx context.Context, router config.RouterConfig, client *ikuaiv
 			start = len(rows) - 180
 		}
 		for _, row := range rows[start:] {
+			avgUp := ikuaiv4.Float64(row, "avg_upload", "upload")
+			avgDown := ikuaiv4.Float64(row, "avg_download", "download")
+			maxUp := ikuaiv4.Float64(row, "max_upload", "upload")
+			maxDown := ikuaiv4.Float64(row, "max_download", "download")
+			avgRTT := ikuaiv4.Float64(row, "avg_rtt", "rtt")
+			maxRTT := ikuaiv4.Float64(row, "max_rtt", "rtt")
+			minRTT := ikuaiv4.Float64(row, "min_rtt", "rtt")
 			pt := WanHistoryPointDTO{
 				Timestamp:       ikuaiv4.Int64(row, "timestamp"),
 				Interface:       ikuaiv4.Str(row, "interface"),
-				AvgUploadKBps:   ikuaiv4.Float64(row, "avg_upload"),
-				AvgDownloadKBps: ikuaiv4.Float64(row, "avg_download"),
-				MaxUploadKBps:   ikuaiv4.Float64(row, "max_upload"),
-				MaxDownloadKBps: ikuaiv4.Float64(row, "max_download"),
-				AvgRTTMs:        ikuaiv4.Float64(row, "avg_rtt"),
-				MaxRTTMs:        ikuaiv4.Float64(row, "max_rtt"),
-				MinRTTMs:        ikuaiv4.Float64(row, "min_rtt"),
+				AvgUploadKBps:   avgUp,
+				AvgDownloadKBps: avgDown,
+				MaxUploadKBps:   maxUp,
+				MaxDownloadKBps: maxDown,
+				AvgRTTMs:        avgRTT,
+				MaxRTTMs:        maxRTT,
+				MinRTTMs:        minRTT,
 				DropRate:        ikuaiv4.Float64(row, "drop_rate"),
 			}
 			dto.WanHistory = append(dto.WanHistory, pt)

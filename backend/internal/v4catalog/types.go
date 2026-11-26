@@ -8,14 +8,15 @@ type OptionItem struct {
 
 // FieldSpec describes an editable field in create/update forms.
 type FieldSpec struct {
-	Key         string       `json:"key"`
-	Label       string       `json:"label"`
-	Type        string       `json:"type"` // text | number | select | switch | textarea | csv | password
-	Required    bool         `json:"required,omitempty"`
-	Default     any          `json:"default,omitempty"`
-	Placeholder string       `json:"placeholder,omitempty"`
-	Options     []OptionItem `json:"options,omitempty"`
-	Help        string       `json:"help,omitempty"`
+	Key            string       `json:"key"`
+	Label          string       `json:"label"`
+	Type           string       `json:"type"` // text | number | select | switch | textarea | csv | password
+	InterfaceScope string       `json:"interface_scope,omitempty"`
+	Required       bool         `json:"required,omitempty"`
+	Default        any          `json:"default,omitempty"`
+	Placeholder    string       `json:"placeholder,omitempty"`
+	Options        []OptionItem `json:"options,omitempty"`
+	Help           string       `json:"help,omitempty"`
 }
 
 // ColumnSpec describes a display column in resource tables.

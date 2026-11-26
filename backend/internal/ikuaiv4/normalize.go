@@ -120,7 +120,7 @@ func extractCollectionFromAny(v any) ([]map[string]any, int) {
 		// 1. Prefer explicit collection keys
 		for _, key := range []string{
 			"data", "rows", "list", "items", "records", "results",
-			"ether_info", "proto3_day",
+			"ether_info", "proto3_day", "vlan_data", "iface_data",
 			"groups_data", "accounts_data", "dir_data", "proto_data", "time_data", "backup_info",
 		} {
 			if sub, exists := typed[key]; exists {

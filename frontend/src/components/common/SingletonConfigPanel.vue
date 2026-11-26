@@ -92,6 +92,13 @@
             >
               <option v-for="opt in field.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
+            <InterfaceSelect
+              v-else-if="field.interface_scope"
+              v-model="form[field.key]"
+              :scope="field.interface_scope"
+              :disabled="!canUpdate || readOnly"
+              :placeholder="field.placeholder"
+            />
             <input
               v-else-if="field.type === 'number'"
               v-model.number="form[field.key]"
@@ -153,6 +160,7 @@ import { executeV4Action, fetchV4Resource, updateV4Resource, type ActionSpec, ty
 import { useAuth } from '@/composables/useAuth'
 import { useCatalog } from '@/composables/useCatalog'
 import { useFleet } from '@/composables/useFleet'
+import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
 import { compoundToCSV } from '@/composables/useFormatters'
 
 const props = defineProps<{

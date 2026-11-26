@@ -68,6 +68,7 @@ func main() {
 		v4 := api.Group("/v4")
 		{
 			v4.GET("/overview", controller.GetV4OverviewHandler)
+			v4.GET("/interfaces/options", controller.GetV4InterfaceOptionsHandler)
 			v4.GET("/monitor/load", controller.GetV4LoadHistoryHandler)
 			v4.GET("/clients", controller.GetV4ClientsHandler)
 			v4.GET("/clients/detail", controller.GetV4ClientDetailHandler)

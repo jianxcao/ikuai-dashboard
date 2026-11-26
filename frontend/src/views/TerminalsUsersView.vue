@@ -274,7 +274,10 @@
             </label>
             <label v-if="quickModal.kind === 'static' || quickModal.kind === 'qos'" class="field-item">
               <span>生效接口</span>
-              <input v-model.trim="quickModal.iface" class="v4-input font-mono" />
+              <InterfaceSelect
+                v-model="quickModal.iface"
+                :scope="quickModal.kind === 'qos' ? 'wan-all' : 'lan'"
+              />
             </label>
             <template v-if="quickModal.kind === 'qos'">
               <label class="field-item">
@@ -316,6 +319,7 @@ import { echarts } from '@/lib/echarts'
 import { Ban, BarChart3, Gauge, Pin, RefreshCw, Search, Tag, UserX, X } from 'lucide-vue-next'
 import ResourceCollectionPanel from '@/components/common/ResourceCollectionPanel.vue'
 import SingletonConfigPanel from '@/components/common/SingletonConfigPanel.vue'
+import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
 import {
   createV4Resource,
   fetchV4ClientDetail,

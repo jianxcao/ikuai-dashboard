@@ -50,7 +50,7 @@
           v-if="canCreate"
           type="button"
           class="v4-btn v4-btn-primary"
-          :disabled="readOnly || loadFailed"
+          :disabled="loadFailed"
           :title="readOnly ? `只读模式下仍可在列表/表单点击 Dry-Run 预览，禁止直接${createButtonLabel}` : createButtonLabel"
           @click="openCreateDrawer"
         >
@@ -216,8 +216,7 @@
                   v-if="canUpdate"
                   type="button"
                   class="icon-btn"
-                  :disabled="readOnly"
-                  :title="readOnly ? '只读保护中' : '编辑'"
+                  :title="readOnly ? '查看表单 / Dry-Run 预览（只读锁定）' : '编辑'"
                   @click="openEditDrawer(row)"
                 >
                   <Pencil :size="14" />
@@ -292,6 +291,12 @@
                   <select v-if="field.type === 'select' || field.type === 'switch'" v-model="formState[field.key]" class="v4-select">
                     <option v-for="opt in field.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                   </select>
+                  <InterfaceSelect
+                    v-else-if="field.interface_scope"
+                    v-model="formState[field.key]"
+                    :scope="field.interface_scope"
+                    :placeholder="field.placeholder"
+                  />
                   <input
                     v-else-if="field.type === 'number'"
                     v-model.number="formState[field.key]"
@@ -350,7 +355,7 @@
             </button>
             <button type="button" class="v4-btn v4-btn-primary" :disabled="submitting || readOnly" @click="submitForm(false)">
               <Save :size="14" />
-              <span>{{ submitting ? '提交中...' : '确认提交' }}</span>
+              <span>{{ submitting ? '提交中...' : readOnly ? '只读保护中（仅可预览）' : '确认提交' }}</span>
             </button>
           </div>
         </div>
@@ -430,7 +435,7 @@
             </label>
             <label class="form-field">
               <span class="field-label">所属接口</span>
-              <input v-model="bindStatic.interface" class="v4-input font-mono" />
+              <InterfaceSelect v-model="bindStatic.interface" scope="lan" />
             </label>
           </div>
           <div class="confirm-actions">
@@ -590,6 +595,7 @@ import {
 import { useAuth } from '@/composables/useAuth'
 import { useCatalog } from '@/composables/useCatalog'
 import { useFleet } from '@/composables/useFleet'
+import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
 import { compoundToCSV, formatBytes, formatCompoundValue, formatObjectRef, formatTimestamp } from '@/composables/useFormatters'
 
 const props = defineProps<{

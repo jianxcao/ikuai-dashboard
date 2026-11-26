@@ -1,0 +1,22 @@
+services:
+  ikuai-dashboard-v4:
+    image: jianxcao/ikuai-dashboard-v4:latest
+    container_name: ikuai-dashboard-v4
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # 注意：请使用全新目录，切勿直接挂载旧版 (main/V3) 的 config.yaml，
+      # V4 采用严格 YAML 校验与纯 API Token 模式，旧版 username/password 字段会校验失败。
+      - ./config:/config
+    environment:
+      TZ: Asia/Shanghai
+      PUID: "1000"
+      PGID: "1000"
+      USER_NAME: admin
+      PASSWORD: change_me_please
+      # SESSION_SECRET: "replace-with-a-random-secret" # 建议设置固定密钥，避免容器重启后登录态失效
+      # READ_ONLY: "false"                             # 设为 true 开启服务端不可绕过的只读保护模式（仍允许 Dry-Run）
+      # DISABLE_AUTH: "false"                          # 设为 true 跳过控制台登录认证（仅建议受信任内网使用）
+      # PORT: "8080"                                   # 容器内监听端口，需与 ports 映射一致
+      # IKUAI_CONFIG: "/config/config.yaml"            # 容器内配置文件路径

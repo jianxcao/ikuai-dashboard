@@ -92,7 +92,7 @@ func GetWanIP(ctx context.Context, router config.RouterConfig, client *ikuaiv4.C
 			if isNonWanInterface(iface) {
 				continue
 			}
-			ip := ikuaiv4.Str(row, "ip_addr", "ip_mask", "ip")
+			ip := ikuaiv4.Str(row, "ip_addr", "pppoe_ip_addr", "dhcp_ip_addr", "ip_mask", "ip")
 			candidates = appendCandidate(candidates, iface, "", ip)
 		}
 	}
@@ -106,7 +106,7 @@ func GetWanIP(ctx context.Context, router config.RouterConfig, client *ikuaiv4.C
 			for _, row := range rows {
 				iface := ikuaiv4.Str(row, "vlan_name", "interface", "name")
 				parent := ikuaiv4.Str(row, "interface", "parent_interface")
-				ip := ikuaiv4.Str(row, "ip_addr", "ip_mask", "ip")
+				ip := ikuaiv4.Str(row, "ip_addr", "pppoe_ip_addr", "dhcp_ip_addr", "ip_mask", "ip")
 				candidates = appendCandidate(candidates, iface, parent, ip)
 			}
 		}

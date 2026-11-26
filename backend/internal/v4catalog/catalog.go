@@ -203,8 +203,8 @@ func networkSpecs() []ResourceSpec {
 			},
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "名称", Type: "text", Required: true, Placeholder: "Office"},
-				{Key: "interface", Label: "绑定接口", Type: "text", Required: true, Default: "lan1"},
-				{Key: "phy_ifnames", Label: "物理接口", Type: "text", Default: "all", Placeholder: "all 或 eth2"},
+				{Key: "interface", Label: "绑定接口", Type: "text", InterfaceScope: "lan", Required: true, Default: "lan1"},
+				{Key: "phy_ifnames", Label: "物理接口", Type: "text", InterfaceScope: "physical-all", Default: "all", Placeholder: "all 或 eth2"},
 				{Key: "addr_pool", Label: "地址池范围", Type: "text", Required: true, Placeholder: "192.168.9.100-192.168.9.200"},
 				{Key: "netmask", Label: "子网掩码", Type: "text", Required: true, Default: "255.255.255.0"},
 				{Key: "gateway", Label: "默认网关", Type: "text", Required: true, Placeholder: "192.168.9.1"},
@@ -243,7 +243,7 @@ func networkSpecs() []ResourceSpec {
 				{Key: "tagname", Label: "设备名称", Type: "text", Required: true, Placeholder: "NAS"},
 				{Key: "ip_addr", Label: "固定 IP", Type: "text", Required: true, Placeholder: "192.168.9.10"},
 				{Key: "mac", Label: "MAC 地址", Type: "text", Required: true, Placeholder: "AA:BB:CC:DD:EE:FF"},
-				{Key: "interface", Label: "所属接口", Type: "text", Required: true, Default: "lan1"},
+				{Key: "interface", Label: "所属接口", Type: "text", InterfaceScope: "lan", Required: true, Default: "lan1"},
 				{Key: "gateway", Label: "网关", Type: "text", Placeholder: "192.168.9.1"},
 				{Key: "dns1", Label: "主 DNS", Type: "text"},
 				enabledField(),
@@ -319,7 +319,7 @@ func networkSpecs() []ResourceSpec {
 			Fields: []FieldSpec{
 				{Key: "vlan_name", Label: "VLAN 名称 (需为 vlan+数字)", Type: "text", Required: true, Placeholder: "vlan100"},
 				{Key: "vlan_id", Label: "VLAN ID (1-4094)", Type: "number", Required: true, Placeholder: "100"},
-				{Key: "interface", Label: "绑定接口", Type: "text", Required: true, Default: "lan1"},
+				{Key: "interface", Label: "绑定接口", Type: "text", InterfaceScope: "lan", Required: true, Default: "lan1"},
 				{Key: "ip_addr", Label: "IP 地址", Type: "text", Required: true, Placeholder: "10.0.100.1"},
 				{Key: "netmask", Label: "子网掩码", Type: "text", Required: true, Default: "255.255.255.0"},
 				enabledField(),
@@ -347,7 +347,7 @@ func networkSpecs() []ResourceSpec {
 			},
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名称", Type: "text", Required: true, Placeholder: "NAS-Web"},
-				{Key: "interface", Label: "外网线路", Type: "text", Required: true, Default: "all", Placeholder: "all 或 wan1"},
+				{Key: "interface", Label: "外网线路", Type: "text", InterfaceScope: "wan-all", Required: true, Default: "all", Placeholder: "all 或 wan1"},
 				{Key: "protocol", Label: "协议", Type: "select", Required: true, Default: "tcp", Options: []OptionItem{
 					{Label: "TCP", Value: "tcp"}, {Label: "UDP", Value: "udp"}, {Label: "TCP+UDP", Value: "tcp+udp"},
 				}},
@@ -383,8 +383,8 @@ func networkSpecs() []ResourceSpec {
 				{Key: "action", Label: "NAT 动作", Type: "select", Required: true, Default: "dnat", Options: []OptionItem{
 					{Label: "DNAT (目的映射)", Value: "dnat"}, {Label: "SNAT (源映射)", Value: "snat"}, {Label: "Filter (过滤)", Value: "filter"},
 				}},
-				{Key: "iinterface", Label: "入接口", Type: "text", Default: "any"},
-				{Key: "ointerface", Label: "出接口", Type: "text", Default: "any"},
+				{Key: "iinterface", Label: "入接口", Type: "text", InterfaceScope: "any", Default: "any"},
+				{Key: "ointerface", Label: "出接口", Type: "text", InterfaceScope: "any", Default: "any"},
 				{Key: "protocol", Label: "协议", Type: "select", Default: "any", Options: []OptionItem{
 					{Label: "ANY", Value: "any"}, {Label: "TCP", Value: "tcp"}, {Label: "UDP", Value: "udp"},
 				}},
@@ -415,7 +415,7 @@ func networkSpecs() []ResourceSpec {
 			},
 			Fields: []FieldSpec{
 				{Key: "tagname", Label: "规则名", Type: "text", Required: true},
-				{Key: "interface", Label: "外网接口/IP", Type: "text", Required: true, Placeholder: "wan1"},
+				{Key: "interface", Label: "外网接口/IP", Type: "text", InterfaceScope: "wan-all", Required: true, Default: "all", Placeholder: "all 或 wan1"},
 				{Key: "lan_addr", Label: "内网主机 IP", Type: "text", Required: true, Placeholder: "192.168.9.250"},
 				{Key: "protocol", Label: "协议", Type: "select", Default: "any", Options: []OptionItem{
 					{Label: "ANY", Value: "any"}, {Label: "TCP", Value: "tcp"}, {Label: "UDP", Value: "udp"},
@@ -443,7 +443,7 @@ func networkSpecs() []ResourceSpec {
 			Fields: []FieldSpec{
 				enabledField(),
 				{Key: "server_name", Label: "服务名称", Type: "text", Default: "iKuai"},
-				{Key: "interface", Label: "监听接口", Type: "text", Default: "lan1"},
+				{Key: "interface", Label: "监听接口", Type: "text", InterfaceScope: "lan", Default: "lan1"},
 				{Key: "server_ip", Label: "服务 IP", Type: "text"},
 				{Key: "addr_pool", Label: "地址池", Type: "text"},
 				{Key: "dns1", Label: "主 DNS", Type: "text"},
