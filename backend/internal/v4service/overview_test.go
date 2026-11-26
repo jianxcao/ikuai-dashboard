@@ -203,3 +203,28 @@ func TestGetInterfaceOptions(t *testing.T) {
 		t.Fatalf("unexpected physical options: %+v", opts.Physical)
 	}
 }
+
+func TestGetLoadHistoryUsesRouterClockByDefault(t *testing.T) {
+	var capturedQuery string
+	client := ikuaiv4.NewClientWithHTTP("https://192.0.2.5", "tok", &http.Client{
+		Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+			capturedQuery = r.URL.RawQuery
+			return okJSON(`{"code":0,"message":"Success","results":{"cpu":[{"timestamp":1795661820,"cpu":6}]}}`), nil
+		}),
+	})
+
+	router := config.RouterConfig{ID: "load-test", Name: "Load Test", URL: "https://192.0.2.5", Token: "tok"}
+	res, err := GetLoadHistory(context.Background(), router, client, "cpu", "hour", "avg")
+	if err != nil {
+		t.Fatalf("GetLoadHistory failed: %v", err)
+	}
+	if !strings.Contains(capturedQuery, "datetype=hour") || !strings.Contains(capturedQuery, "math=avg") {
+		t.Fatalf("expected datetype=hour and math=avg in query, got %q", capturedQuery)
+	}
+	if strings.Contains(capturedQuery, "start_time=") || strings.Contains(capturedQuery, "end_time=") {
+		t.Fatalf("expected no host start_time/end_time on primary load query, got %q", capturedQuery)
+	}
+	if len(res.Series) != 1 || res.Metric != "cpu" || res.TimeRange != "hour" {
+		t.Fatalf("unexpected load history response: %+v", res)
+	}
+}

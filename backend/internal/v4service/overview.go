@@ -544,17 +544,27 @@ func GetLoadHistory(ctx context.Context, router config.RouterConfig, client *iku
 		return mockLoadHistory(router, metric, timeRange, aggregate), nil
 	}
 
-	end := time.Now().Unix()
-	start := end - windowSeconds
 	params := map[string]string{
-		"datetype":   timeRange,
-		"start_time": strconv.FormatInt(start, 10),
-		"end_time":   strconv.FormatInt(end, 10),
-		"math":       aggregate,
+		"datetype": timeRange,
+		"math":     aggregate,
 	}
 	raw, err := client.Get(ctx, "/monitoring/"+metric, params)
 	if err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		end := time.Now().Unix()
+		start := end - windowSeconds
+		fallbackParams := map[string]string{
+			"datetype":   timeRange,
+			"start_time": strconv.FormatInt(start, 10),
+			"end_time":   strconv.FormatInt(end, 10),
+			"math":       aggregate,
+		}
+		raw, err = client.Get(ctx, "/monitoring/"+metric, fallbackParams)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	rows, _ := ikuaiv4.ExtractCollection(raw)

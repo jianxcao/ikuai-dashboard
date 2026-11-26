@@ -116,6 +116,7 @@ type Client struct {
 	Token              string
 	InsecureSkipVerify bool
 	httpClient         *http.Client
+	sem                chan struct{}
 }
 
 // NewClient constructs an iKuai v4 REST client with optional TLS skip-verify.
@@ -130,7 +131,7 @@ func NewClient(baseURL, token string, insecureSkipVerify bool) *Client {
 	transport.MaxIdleConns = 100
 	transport.MaxIdleConnsPerHost = 24
 	transport.IdleConnTimeout = 90 * time.Second
-	transport.TLSHandshakeTimeout = 5 * time.Second
+	transport.TLSHandshakeTimeout = 10 * time.Second
 	transport.ForceAttemptHTTP2 = true
 
 	return &Client{
@@ -141,6 +142,7 @@ func NewClient(baseURL, token string, insecureSkipVerify bool) *Client {
 			Timeout:   defaultTimeout,
 			Transport: transport,
 		},
+		sem: make(chan struct{}, 3),
 	}
 }
 
@@ -201,8 +203,26 @@ func (c *Client) PreviewDryRun(method, path string, params map[string]string, bo
 	return preview
 }
 
+func (c *Client) acquire(ctx context.Context) (func(), error) {
+	if c.sem == nil {
+		return func() {}, nil
+	}
+	select {
+	case c.sem <- struct{}{}:
+		return func() { <-c.sem }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 // Get sends a GET request to the iKuai v4 API and extracts data/results payload.
 func (c *Client) Get(ctx context.Context, path string, params map[string]string) (json.RawMessage, error) {
+	release, err := c.acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("连接爱快 v4 接口超时: %w", err)
+	}
+	defer release()
+
 	fullURL := c.buildURL(path, params)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
 	if err != nil {
@@ -238,6 +258,12 @@ func (c *Client) Delete(ctx context.Context, path string) (json.RawMessage, erro
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
+	release, err := c.acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("连接爱快 v4 接口超时: %w", err)
+	}
+	defer release()
+
 	var bodyBytes []byte
 	if body != nil {
 		b, err := json.Marshal(body)
