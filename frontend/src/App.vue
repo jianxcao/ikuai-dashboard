@@ -7,10 +7,9 @@
 
   <LoginView v-else-if="authEnabled && !isAuthenticated" />
 
-  <template v-else>
-    <AppLayout />
-    <PWAUpdatePrompt />
-  </template>
+  <AppLayout v-else />
+
+  <PWAUpdatePrompt />
 </template>
 
 <script setup lang="ts">

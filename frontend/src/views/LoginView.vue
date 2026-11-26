@@ -10,7 +10,10 @@
             <img src="/ikuai-icon.svg" alt="iKuai V4" class="logo-img" />
           </div>
           <div>
-            <span class="eyebrow font-mono">IKUAI OS V4.0 CONSOLE</span>
+            <div class="eyebrow-row">
+              <span class="eyebrow font-mono">IKUAI OS V4.0 CONSOLE</span>
+              <span class="v4-badge font-mono">{{ displayVersion }}</span>
+            </div>
             <h1>爱快 V4 多节点控制台</h1>
           </div>
         </div>
@@ -112,8 +115,10 @@
 import { ref } from 'vue'
 import { Eye, EyeOff, KeyRound, LockKeyholeOpen, LogIn, User } from 'lucide-vue-next'
 import ThemePicker from '@/components/layout/ThemePicker.vue'
+import { useAppUpdate } from '@/composables/useAppUpdate'
 import { useAuth } from '@/composables/useAuth'
 
+const { displayVersion } = useAppUpdate()
 const { login, serverReadOnly } = useAuth()
 
 const username = ref('')
@@ -216,6 +221,13 @@ async function handleLogin() {
 .logo-img {
   width: 36px;
   height: 36px;
+}
+
+.eyebrow-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .eyebrow {

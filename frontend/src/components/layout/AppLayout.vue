@@ -7,7 +7,7 @@
         <div class="brand-text">
           <div class="brand-title-line">
             <strong>iKuai Console</strong>
-            <span class="v4-pill font-mono">V4.0</span>
+            <span class="v4-pill font-mono" :title="`当前控制台版本 ${displayVersion}`">{{ displayVersion }}</span>
           </div>
           <span class="brand-sub">Multi-Router · Control Plane</span>
         </div>
@@ -31,9 +31,30 @@
       </div>
 
       <div class="rail-footer">
+        <button
+          v-if="updateAvailable"
+          type="button"
+          class="rail-update-btn"
+          :disabled="updating"
+          @click="applyUpdate"
+        >
+          <Sparkles :size="13" />
+          <span>{{ remoteVersionLabel ? `更新至 ${remoteVersionLabel}` : '发现新版本 · 立即更新' }}</span>
+        </button>
         <div class="rail-theme-info">
-          <span class="theme-dot" :style="{ background: currentThemeMeta?.swatchPrimary }" />
-          <span>{{ currentThemeMeta?.label }}</span>
+          <div class="rail-theme-name">
+            <span class="theme-dot" :style="{ background: currentThemeMeta?.swatchPrimary }" />
+            <span>{{ currentThemeMeta?.label }}</span>
+          </div>
+          <button
+            type="button"
+            class="rail-ver-chip font-mono"
+            :disabled="checking"
+            title="点击检查界面更新"
+            @click="checkForUpdates(true)"
+          >
+            {{ checking ? '检查中...' : displayVersion }}
+          </button>
         </div>
         <button
           v-if="authEnabled"
@@ -160,11 +181,24 @@
     <div v-if="mobileMoreOpen" class="mobile-sheet-backdrop" @click.self="mobileMoreOpen = false">
       <div class="mobile-sheet v4-panel">
         <div class="sheet-head">
-          <strong>全部 V4 模块与主题</strong>
+          <div class="sheet-title-wrap">
+            <strong>全部 V4 模块与主题</strong>
+            <span class="v4-pill font-mono">{{ displayVersion }}</span>
+          </div>
           <button type="button" class="v4-btn btn-xs" @click="mobileMoreOpen = false">
             <X :size="15" />
           </button>
         </div>
+        <button
+          v-if="updateAvailable"
+          type="button"
+          class="rail-update-btn"
+          :disabled="updating"
+          @click="applyUpdate"
+        >
+          <Sparkles :size="14" />
+          <span>{{ remoteVersionLabel ? `发现新版本 ${remoteVersionLabel} · 立即刷新更新` : '发现新版本控制台界面 · 立即更新' }}</span>
+        </button>
         <div class="sheet-grid">
           <button
             v-for="tab in allTabs"
@@ -209,6 +243,7 @@ import {
   Search,
   ServerCog,
   ShieldCheck,
+  Sparkles,
   Unlock,
   Waypoints,
   Wifi,
@@ -219,6 +254,7 @@ import RouterFleetSwitcher from './RouterFleetSwitcher.vue'
 import ThemePicker from './ThemePicker.vue'
 import CommandPalette from './CommandPalette.vue'
 import { useAppRoute } from '@/composables/useAppRoute'
+import { useAppUpdate } from '@/composables/useAppUpdate'
 import { useAuth } from '@/composables/useAuth'
 import { useFleet } from '@/composables/useFleet'
 import { useTheme } from '@/composables/useTheme'
@@ -299,6 +335,15 @@ const mobileMoreOpen = ref(false)
 const { authEnabled, logout, readOnly, serverReadOnly, toggleSafetyLock, setServerReadOnly } = useAuth()
 const { config, isUnconfigured } = useFleet()
 const { currentThemeMeta } = useTheme()
+const {
+  displayVersion,
+  remoteVersionLabel,
+  updateAvailable,
+  updating,
+  checking,
+  checkForUpdates,
+  applyUpdate,
+} = useAppUpdate()
 
 watch(
   () => config.value.server.read_only,
@@ -494,13 +539,77 @@ onUnmounted(() => window.removeEventListener('keydown', handleGlobalKeydown))
   gap: 10px;
 }
 
+.rail-update-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--accent-primary) 34%, transparent);
+  background: var(--accent-primary-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui);
+}
+
+.rail-update-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+
+.rail-update-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .rail-theme-info {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   font-size: 12px;
   color: var(--text-muted);
-  padding: 0 6px;
+  padding: 0 4px;
+}
+
+.rail-theme-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rail-ver-chip {
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--divider-line);
+  background: var(--surface-input);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.14s var(--ease-ui), border-color 0.14s var(--ease-ui);
+}
+
+.rail-ver-chip:hover:not(:disabled) {
+  color: var(--text-strong);
+  border-color: var(--border-control);
+}
+
+.rail-ver-chip:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.sheet-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .theme-dot {

@@ -3,7 +3,7 @@
     <!-- Section 1: Multi-Router V4 Fleet -->
     <header class="ws-head v4-panel">
       <div>
-        <span class="ws-eyebrow font-mono">MULTI-ROUTER V4 FLEET & THEME STUDIO</span>
+        <span class="ws-eyebrow font-mono">MULTI-ROUTER V4 FLEET & THEME STUDIO · {{ displayVersion }}</span>
         <h1>多爱快 V4 节点管理与主题工坊</h1>
         <p>仅支持爱快 OS v4.0 API Token 接入，支持并发健康探测、连接测试及多路由器无缝切换。</p>
       </div>
@@ -264,13 +264,44 @@
         </button>
       </div>
     </section>
+
+    <!-- Section 4: Console Version & PWA Update -->
+    <section class="v4-card studio-section">
+      <div class="section-head">
+        <div>
+          <h2>控制台版本与 PWA 界面更新</h2>
+          <p>显示当前构建/Tag 版本号，并支持手动检查服务端或 Service Worker 是否发布了新版本控制台界面。</p>
+        </div>
+        <div class="head-actions">
+          <span class="v4-badge font-mono">前端 {{ displayVersion }}</span>
+          <span class="v4-badge font-mono">后端 {{ serverVersion || displayVersion }}</span>
+          <span class="v4-badge" :class="updateAvailable ? 'v4-badge-accent' : swReady ? 'v4-badge-up' : ''">
+            {{ updateAvailable ? '发现新版本待更新' : swReady ? 'PWA 离线缓存已就绪' : '浏览器直连模式' }}
+          </span>
+        </div>
+      </div>
+
+      <div v-if="lastCheckMessage" class="toast-banner">{{ lastCheckMessage }}</div>
+
+      <div class="head-actions">
+        <button type="button" class="v4-btn" :disabled="checking" @click="checkForUpdates(true)">
+          <RefreshCw :size="14" :class="{ spin: checking }" />
+          <span>{{ checking ? '检查中...' : '检查界面更新' }}</span>
+        </button>
+        <button v-if="updateAvailable" type="button" class="v4-btn v4-btn-primary" :disabled="updating" @click="applyUpdate">
+          <Sparkles :size="14" />
+          <span>{{ updating ? '正在刷新...' : remoteVersionLabel ? `立即更新至 ${remoteVersionLabel}` : '立即刷新更新' }}</span>
+        </button>
+      </div>
+    </section>
   </section>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import { Check, Copy, Eye, EyeOff, Plus, RefreshCw, Save, Server, Trash2, Wifi } from 'lucide-vue-next'
+import { Check, Copy, Eye, EyeOff, Plus, RefreshCw, Save, Server, Sparkles, Trash2, Wifi } from 'lucide-vue-next'
 import type { EditableRouterConfig, RouterHealthDTO } from '@/api/v4'
+import { useAppUpdate } from '@/composables/useAppUpdate'
 import { useAuth } from '@/composables/useAuth'
 import { useFleet } from '@/composables/useFleet'
 import { useTheme } from '@/composables/useTheme'
@@ -278,6 +309,18 @@ import { useTokenConfig } from '@/composables/useTokenConfig'
 import { formatSpeed } from '@/composables/useFormatters'
 
 const { readOnly, serverReadOnly, uiSafetyLock, toggleSafetyLock } = useAuth()
+const {
+  displayVersion,
+  serverVersion,
+  remoteVersionLabel,
+  swReady,
+  updateAvailable,
+  checking,
+  updating,
+  lastCheckMessage,
+  checkForUpdates,
+  applyUpdate,
+} = useAppUpdate()
 
 const {
   config,
