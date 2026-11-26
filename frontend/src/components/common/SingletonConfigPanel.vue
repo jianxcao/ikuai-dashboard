@@ -171,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onDeactivated, reactive, ref, watch } from 'vue'
 import { Check, Eye, RefreshCw, Save, Terminal, Zap } from 'lucide-vue-next'
 import { executeV4Action, fetchV4Resource, updateV4Resource, type ActionSpec, type FieldSpec, type ResourceSpec } from '@/api/v4'
 import { useAuth } from '@/composables/useAuth'
@@ -483,6 +483,10 @@ watch(
   },
   { immediate: true }
 )
+
+onDeactivated(() => {
+  quickGroupModal.open = false
+})
 </script>
 
 <style scoped>

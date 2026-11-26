@@ -908,6 +908,8 @@ onActivated(() => {
 onDeactivated(() => {
   stopPolling()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  closeDetail()
+  quickModal.open = false
 })
 
 onUnmounted(() => {

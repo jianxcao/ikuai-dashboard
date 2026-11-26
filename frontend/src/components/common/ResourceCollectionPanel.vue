@@ -718,7 +718,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, reactive, ref, watch } from 'vue'
 import {
   Braces,
   Check,
@@ -778,7 +778,7 @@ const { navigate } = useAppRoute()
 const { readOnly } = useAuth()
 const { getSpec } = useCatalog()
 const { routerEpoch } = useFleet()
-const { consumePendingGroupFilter, loadObjectGroupList } = useObjectGroups()
+const { consumePendingGroupFilter, invalidateObjectGroupCache, loadObjectGroupList } = useObjectGroups()
 
 const loading = ref(false)
 const loadFailed = ref(false)
@@ -1433,6 +1433,9 @@ async function submitForm(dryRun: boolean) {
     if (dryRun) {
       dryRunPreview.value = res
     } else {
+      if (props.resourceKey.endsWith('-objects')) {
+        invalidateObjectGroupCache(props.resourceKey as ObjectGroupKey)
+      }
       drawerOpen.value = false
       showToast(editingId.value ? `${itemNoun.value}已更新` : `${itemNoun.value}已创建`)
       await reload()
@@ -1467,6 +1470,9 @@ async function executeDelete() {
   error.value = null
   try {
     await deleteV4Resource(props.resourceKey, deleteTarget.value.id, false, deleteTarget.value.srcfile)
+    if (props.resourceKey.endsWith('-objects')) {
+      invalidateObjectGroupCache(props.resourceKey as ObjectGroupKey)
+    }
     deleteTarget.value = null
     showToast('删除操作已完成')
     await reload()
@@ -1640,6 +1646,26 @@ watch(
   },
   { immediate: true }
 )
+
+onActivated(() => {
+  const pending = consumePendingGroupFilter(props.resourceKey)
+  if (pending !== null) {
+    page.value = 1
+    search.value = pending
+    tableSort.resetSort()
+    void reload()
+  }
+})
+
+onDeactivated(() => {
+  drawerOpen.value = false
+  inspectRow.value = null
+  deleteTarget.value = null
+  refsModal.open = false
+  peersModal.open = false
+  bindStatic.open = false
+  quickGroupModal.open = false
+})
 </script>
 
 <style scoped>

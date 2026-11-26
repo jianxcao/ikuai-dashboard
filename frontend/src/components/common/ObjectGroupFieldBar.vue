@@ -107,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onMounted, ref, watch } from 'vue'
 import { ExternalLink, X } from 'lucide-vue-next'
 import {
   OBJECT_GROUP_META,
@@ -205,6 +205,10 @@ watch(
 )
 
 onMounted(() => {
+  void loadObjectGroupList(props.groupKey)
+})
+
+onActivated(() => {
   void loadObjectGroupList(props.groupKey)
 })
 </script>
