@@ -45,6 +45,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowRight, Search } from 'lucide-vue-next'
+import { resolveResourceTab } from '@/composables/useAppRoute'
 import { useCatalog } from '@/composables/useCatalog'
 import { useFleet } from '@/composables/useFleet'
 import { useTheme } from '@/composables/useTheme'
@@ -78,20 +79,6 @@ watch(
   }
 )
 
-const groupToTab: Record<string, string> = {
-  network: 'network',
-  routing: 'routing',
-  qos: 'routing',
-  security: 'security',
-  users: 'terminals',
-  vpn: 'vpn-wireless',
-  wireless: 'vpn-wireless',
-  objects: 'vpn-wireless',
-  advanced: 'system',
-  log: 'logs',
-  system: 'system',
-}
-
 interface PaletteEntry {
   id: string
   category: string
@@ -116,7 +103,7 @@ const allEntries = computed<PaletteEntry[]>(() => {
   }
 
   for (const spec of catalog.value) {
-    const tab = groupToTab[spec.group] || 'overview'
+    const tab = resolveResourceTab(spec.group)
     entries.push({
       id: `res:${spec.key}`,
       category: 'CLI',

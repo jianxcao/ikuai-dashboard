@@ -198,6 +198,7 @@
 import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   Activity,
+  Boxes,
   Ellipsis,
   Globe,
   Laptop,
@@ -210,6 +211,7 @@ import {
   ShieldCheck,
   Unlock,
   Waypoints,
+  Wifi,
   Wrench,
   X,
 } from 'lucide-vue-next'
@@ -228,7 +230,9 @@ const TrafficTopologyView = defineAsyncComponent(() => import('@/views/TrafficTo
 const NetworkView = defineAsyncComponent(() => import('@/views/NetworkView.vue'))
 const RoutingQosView = defineAsyncComponent(() => import('@/views/RoutingQosView.vue'))
 const SecurityView = defineAsyncComponent(() => import('@/views/SecurityView.vue'))
-const VpnWirelessObjectsView = defineAsyncComponent(() => import('@/views/VpnWirelessObjectsView.vue'))
+const ObjectsView = defineAsyncComponent(() => import('@/views/ObjectsView.vue'))
+const VpnView = defineAsyncComponent(() => import('@/views/VpnView.vue'))
+const WirelessView = defineAsyncComponent(() => import('@/views/WirelessView.vue'))
 const LogsAuditView = defineAsyncComponent(() => import('@/views/LogsAuditView.vue'))
 const SystemMaintenanceView = defineAsyncComponent(() => import('@/views/SystemMaintenanceView.vue'))
 const FleetThemeCenterView = defineAsyncComponent(() => import('@/views/FleetThemeCenterView.vue'))
@@ -257,18 +261,20 @@ const navGroups: Array<{ title: string; items: NavTab[] }> = [
       { id: 'network', label: '网络与接口', shortLabel: '网络', desc: 'WAN/LAN/DHCP/DNS/VLAN/NAT', icon: Globe, mobilePrimary: true },
       { id: 'routing', label: '路由与 QoS', shortLabel: '路由', desc: '静态路由、策略分流与带宽限速', icon: Waypoints },
       { id: 'security', label: '安全防护', shortLabel: '安全', desc: 'ACL、L7、MAC/URL/域名黑名单', icon: ShieldCheck },
+      { id: 'objects', label: '对象分组', shortLabel: '分组', desc: 'IP/MAC/端口/域名/时间段分组', icon: Boxes },
     ],
   },
   {
-    title: '隧道与审计',
+    title: '隧道与无线',
     items: [
-      { id: 'vpn-wireless', label: 'VPN · 无线 · 对象', shortLabel: '隧道', desc: 'WireGuard/IPSec/AC/对象组', icon: Lock },
+      { id: 'vpn', label: 'VPN 隧道', shortLabel: 'VPN', desc: 'WireGuard/IPSec/OpenVPN/L2TP', icon: Lock },
+      { id: 'wireless', label: '无线网络', shortLabel: '无线', desc: '无线 AC 控制器、AP 与接入控制', icon: Wifi },
+    ],
+  },
+  {
+    title: '审计与运维',
+    items: [
       { id: 'logs', label: '日志审计', shortLabel: '日志', desc: '10 类系统/认证/DHCP/URL 日志', icon: ScrollText },
-    ],
-  },
-  {
-    title: '运维与平台',
-    items: [
       { id: 'system', label: '系统维护', shortLabel: '维护', desc: 'BBR/SSH/VRRP/备份/固件/服务', icon: Wrench },
       { id: 'fleet', label: '节点与主题', shortLabel: '节点', desc: '多爱快 V4 切换、探测与 6 套主题', icon: ServerCog, mobilePrimary: true },
     ],
@@ -321,7 +327,9 @@ const viewMap: Record<string, unknown> = {
   network: NetworkView,
   routing: RoutingQosView,
   security: SecurityView,
-  'vpn-wireless': VpnWirelessObjectsView,
+  objects: ObjectsView,
+  vpn: VpnView,
+  wireless: WirelessView,
   logs: LogsAuditView,
   system: SystemMaintenanceView,
   fleet: FleetThemeCenterView,

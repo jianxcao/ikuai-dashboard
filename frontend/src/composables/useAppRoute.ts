@@ -7,10 +7,30 @@ export const ROUTE_TAB_TITLES: Record<string, string> = {
   network: '网络与接口',
   routing: '路由与 QoS',
   security: '安全防护',
-  'vpn-wireless': 'VPN · 无线 · 对象',
+  objects: '对象分组',
+  vpn: 'VPN 隧道',
+  wireless: '无线网络',
   logs: '日志审计',
   system: '系统维护',
   fleet: '节点与主题',
+}
+
+const RESOURCE_GROUP_TAB_MAP: Record<string, string> = {
+  network: 'network',
+  routing: 'routing',
+  qos: 'routing',
+  security: 'security',
+  users: 'terminals',
+  vpn: 'vpn',
+  wireless: 'wireless',
+  objects: 'objects',
+  advanced: 'system',
+  log: 'logs',
+  system: 'system',
+}
+
+export function resolveResourceTab(group: string): string {
+  return RESOURCE_GROUP_TAB_MAP[group] || 'overview'
 }
 
 interface ParsedRoute {
@@ -30,11 +50,22 @@ function parsePathname(pathname: string): ParsedRoute {
   }
 
   const candidateTab = decodeSegment(parts[0]!)
+  const candidateSub = parts[1] ? decodeSegment(parts[1]) : undefined
+
+  if (candidateTab === 'vpn-wireless') {
+    if (candidateSub?.startsWith('wireless-')) {
+      return { tab: 'wireless', sub: candidateSub, normalized: true }
+    }
+    if (candidateSub?.endsWith('-objects')) {
+      return { tab: 'objects', sub: candidateSub, normalized: true }
+    }
+    return { tab: 'vpn', sub: candidateSub || undefined, normalized: true }
+  }
+
   if (!Object.prototype.hasOwnProperty.call(ROUTE_TAB_TITLES, candidateTab)) {
     return { tab: 'overview', sub: undefined, normalized: true }
   }
 
-  const candidateSub = parts[1] ? decodeSegment(parts[1]) : undefined
   return {
     tab: candidateTab,
     sub: candidateSub || undefined,
