@@ -16,13 +16,41 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var appVersion = "dev"
+
+func resolvedAppVersion() string {
+	if v := strings.TrimSpace(appVersion); v != "" && v != "dev" {
+		return v
+	}
+	if v := strings.TrimSpace(os.Getenv("APP_VERSION")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(appVersion); v != "" {
+		return v
+	}
+	return "dev"
+}
+
+func registerHealthRoute(r *gin.Engine) {
+	r.GET("/health", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.JSON(http.StatusOK, gin.H{
+			"status":      "ok",
+			"version":     "v4",
+			"app_version": resolvedAppVersion(),
+			"config":      config.GlobalPath,
+			"service":     fleet.GlobalManager.Status(),
+		})
+	})
+}
+
 func main() {
 	configPath := flag.String("config", "", "YAML 配置文件路径")
 	flag.Parse()
 
 	logger.InitLogger()
 	logger.Log.Info("══════════════════════════════════════")
-	logger.Log.Info("  iKuai Console V4 · 后端服务启动中")
+	logger.Log.Infof("  iKuai Console V4 (%s) · 后端服务启动中", resolvedAppVersion())
 	logger.Log.Info("══════════════════════════════════════")
 
 	if err := config.InitConfig(*configPath); err != nil {
@@ -102,14 +130,7 @@ func main() {
 		api.GET("/monitor/multi-wan", controller.GetMultiWanHandler)
 	}
 
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "ok",
-			"version": "v4",
-			"config":  config.GlobalPath,
-			"service": fleet.GlobalManager.Status(),
-		})
-	})
+	registerHealthRoute(r)
 
 	registerStaticRoutes(r, config.GlobalConfig.Server.StaticDir)
 

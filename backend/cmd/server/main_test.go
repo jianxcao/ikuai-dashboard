@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -81,5 +82,39 @@ func TestRegisterStaticRoutesCacheHeaders(t *testing.T) {
 				t.Fatalf("GET %s Cache-Control = %q, want %q", tc.path, gotCache, tc.wantCache)
 			}
 		})
+	}
+}
+
+func TestHealthEndpointIncludesAppVersion(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prevVersion := appVersion
+	appVersion = "v4.0.4"
+	t.Cleanup(func() {
+		appVersion = prevVersion
+	})
+
+	r := gin.New()
+	registerHealthRoute(r)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /health status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if gotCache := rec.Header().Get("Cache-Control"); gotCache != "no-cache, no-store, must-revalidate" {
+		t.Fatalf("GET /health Cache-Control = %q, want no-cache, no-store, must-revalidate", gotCache)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode /health json: %v", err)
+	}
+	if payload["version"] != "v4" {
+		t.Fatalf("GET /health version = %v, want v4", payload["version"])
+	}
+	if payload["app_version"] != "v4.0.4" {
+		t.Fatalf("GET /health app_version = %v, want v4.0.4", payload["app_version"])
 	}
 }

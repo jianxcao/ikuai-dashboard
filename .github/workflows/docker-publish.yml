@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-tags: true
 
       - name: Resolve image metadata
         id: meta
@@ -88,9 +90,17 @@ jobs:
             fi
           } | awk '!seen[$0]++' > "${tags_file}"
 
+          if [ "${version}" != "latest" ]; then
+            app_version="${version}"
+          else
+            git_desc="$(git describe --tags --always 2>/dev/null || true)"
+            app_version="${git_desc:-sha-${short_sha}}"
+          fi
+
           {
             echo "image=${image}"
             echo "version=${version}"
+            echo "app_version=${app_version}"
             echo "push=${push}"
             echo "tags<<EOF"
             cat "${tags_file}"
@@ -140,6 +150,6 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           build-args: |
-            VITE_APP_VERSION=${{ steps.meta.outputs.version }}
+            VITE_APP_VERSION=${{ steps.meta.outputs.app_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true

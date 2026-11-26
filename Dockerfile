@@ -10,13 +10,15 @@ RUN pnpm run build
 
 FROM golang:1.26-alpine AS backend-build
 WORKDIR /src
+ARG VITE_APP_VERSION=dev
 COPY go.mod go.sum ./
 RUN go mod download
 COPY backend/ ./backend/
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ikuai-dashboard ./backend/cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.appVersion=${VITE_APP_VERSION}" -o /out/ikuai-dashboard ./backend/cmd/server
 
 FROM alpine:3.22
 WORKDIR /app
+ARG VITE_APP_VERSION=dev
 RUN apk add --no-cache ca-certificates dumb-init gosu shadow tzdata \
 	&& addgroup -S -g 10001 ikuai \
 	&& adduser -S -D -H -u 10001 -G ikuai -s /sbin/nologin ikuai \
@@ -27,6 +29,7 @@ COPY --from=frontend-build /src/frontend/dist /app/frontend/dist
 COPY config.example.yaml /defaults/config.example.yaml
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 ENV IKUAI_CONFIG=/config/config.yaml \
+	APP_VERSION=${VITE_APP_VERSION} \
 	PUID=1000 \
 	PGID=1000 \
 	UMASK=022
