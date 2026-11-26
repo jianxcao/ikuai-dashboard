@@ -3,11 +3,14 @@ name: Docker Publish
 on:
   push:
     tags:
-      - "v*" # 当推送以 v 开头的标签时触发
+      - "v4.*" # 例如 v4.0.0, v4.0.1, v4.0.0-beta.1
+      - "v4-*" # 例如 v4-0.0.1, v4-0.1.0
+      - "V4.*"
+      - "V4-*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Optional Docker tag to publish, for example v1.2.3"
+        description: "Optional Docker tag to publish, for example v4.0.0"
         required: false
         type: string
 
@@ -28,7 +31,7 @@ jobs:
         shell: bash
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          DOCKERHUB_IMAGE: ${{ vars.DOCKERHUB_IMAGE }}
+          DOCKERHUB_IMAGE_V4: ${{ vars.DOCKERHUB_IMAGE_V4 }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           DISPATCH_TAG: ${{ inputs.tag }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -50,12 +53,12 @@ jobs:
           }
 
           short_sha="${GITHUB_SHA::7}"
-          image="${DOCKERHUB_IMAGE}"
+          image="${DOCKERHUB_IMAGE_V4}"
           if [ -z "${image}" ]; then
             if [ -z "${DOCKERHUB_USERNAME}" ]; then
-              image="ikuai-dashboard"
+              image="jianxcao/ikuai-dashboard-v4"
             else
-              image="${DOCKERHUB_USERNAME}/ikuai-dashboard"
+              image="${DOCKERHUB_USERNAME}/ikuai-dashboard-v4"
             fi
           fi
 
@@ -69,7 +72,7 @@ jobs:
           elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             version="$(sanitize_tag "${GITHUB_REF_NAME}")"
             latest="true"
-          elif [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
+          elif [ "${GITHUB_REF_NAME}" = "V4" ] || [ "${GITHUB_REF_NAME}" = "${DEFAULT_BRANCH}" ]; then
             version="latest"
             latest="true"
           else
@@ -132,7 +135,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
-            org.opencontainers.image.title=ikuai-dashboard
+            org.opencontainers.image.title=ikuai-dashboard-v4
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
