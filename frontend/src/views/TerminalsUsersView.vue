@@ -364,128 +364,36 @@
     <!-- Accounts & Packages via ResourceCollectionPanel -->
     <ResourceCollectionPanel v-else :key="activeTab" :resourceKey="activeTab" />
 
-    <!-- Client Detail Drawer -->
-    <teleport to="body">
-      <div v-if="selectedClient" class="drawer-backdrop" @click.self="closeDetail">
-        <div class="drawer-panel v4-panel">
-          <div class="drawer-head">
-            <div>
-              <strong>{{ selectedClient.comment || selectedClient.hostname || selectedClient.ip_addr }}</strong>
-              <span class="font-mono">{{ selectedClient.ip_addr }} · {{ selectedClient.mac }}</span>
-            </div>
-            <button type="button" class="v4-btn btn-xs" @click="closeDetail">
-              <X :size="15" />
-            </button>
-          </div>
-          <div class="drawer-body">
-            <div v-if="detailLoading" class="loading-state"><div class="spinner" /></div>
-            <div v-else-if="detailError" class="error-banner">{{ detailError }}</div>
-            <template v-else-if="clientDetail">
-              <div class="detail-section">
-                <h4>5 分钟速率趋势</h4>
-                <div ref="detailChartEl" class="detail-chart" />
-              </div>
-              <div class="detail-section">
-                <h4>Top L7 应用协议分布</h4>
-                <div v-if="clientDetail.app_protocols.length === 0" class="empty-state">暂无应用层统计数据</div>
-                <div v-else class="app-list">
-                  <div v-for="(app, idx) in clientDetail.app_protocols" :key="idx" class="app-row">
-                    <strong>{{ String(app.appname ?? app.app_name ?? '未知应用') }}</strong>
-                    <span class="font-mono">↓ {{ formatBytes(Number(app.total_down ?? 0)) }} · ↑ {{ formatBytes(Number(app.total_up ?? 0)) }}</span>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </div>
-        </div>
-      </div>
-    </teleport>
+    <ClientDetailDrawer :client="selectedClient" @close="selectedClient = null" />
 
-    <!-- Quick Control Modal -->
-    <teleport to="body">
-      <div v-if="quickModal.open" class="drawer-backdrop center" @click.self="quickModal.open = false">
-        <div class="confirm-dialog v4-panel">
-          <div class="modal-top">
-            <h4>{{ quickModalTitle }}</h4>
-            <button type="button" class="v4-btn btn-xs" @click="quickModal.open = false"><X :size="14" /></button>
-          </div>
-          <div v-if="quickModal.error" class="error-banner">{{ quickModal.error }}</div>
-          <div class="modal-form">
-            <label class="field-item">
-              <span>名称 / 标签</span>
-              <input v-model.trim="quickModal.tagname" class="v4-input" />
-            </label>
-            <label v-if="quickModal.kind === 'static' || quickModal.kind === 'qos'" class="field-item">
-              <span>IP 地址</span>
-              <input v-model.trim="quickModal.ip_addr" class="v4-input font-mono" />
-            </label>
-            <label v-if="quickModal.kind !== 'qos'" class="field-item">
-              <span>MAC 地址</span>
-              <input v-model.trim="quickModal.mac" class="v4-input font-mono" />
-            </label>
-            <div v-if="quickModal.kind === 'static' || quickModal.kind === 'qos'" class="field-item">
-              <span>生效接口</span>
-              <InterfaceSelect
-                v-model="quickModal.iface"
-                :scope="quickModal.kind === 'qos' ? 'wan-all' : 'lan'"
-              />
-            </div>
-            <template v-if="quickModal.kind === 'qos'">
-              <label class="field-item">
-                <span>上行限速 (Kbps)</span>
-                <input v-model.number="quickModal.upload" type="number" class="v4-input font-mono" />
-              </label>
-              <label class="field-item">
-                <span>下行限速 (Kbps)</span>
-                <input v-model.number="quickModal.download" type="number" class="v4-input font-mono" />
-              </label>
-            </template>
-            <label v-if="quickModal.kind === 'mac-block'" class="field-item">
-              <span>规则状态</span>
-              <select v-model="quickModal.enabled" class="v4-select">
-                <option value="yes">立即生效 (enabled=yes)</option>
-                <option value="no">先创建暂不生效 (enabled=no)</option>
-              </select>
-            </label>
-            <label v-if="quickModal.kind !== 'qos'" class="field-item">
-              <span>备注</span>
-              <input v-model.trim="quickModal.comment" class="v4-input" />
-            </label>
-          </div>
-          <div class="confirm-actions">
-            <button type="button" class="v4-btn" @click="quickModal.open = false">取消</button>
-            <button type="button" class="v4-btn v4-btn-primary" :disabled="quickModal.busy" @click="submitQuickModal">
-              {{ quickModal.busy ? '执行中...' : '确认应用' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </teleport>
+    <ClientQuickActionModal
+      :open="quickModal.open"
+      :kind="quickModal.kind"
+      :client="quickModal.client"
+      @close="quickModal.open = false"
+      @applied="showToast($event)"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { echarts } from '@/lib/echarts'
-import { ArrowDown, ArrowUp, Ban, BarChart3, Gauge, Pin, RefreshCw, Search, Tag, UserX, X } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, Ban, BarChart3, Gauge, Pin, RefreshCw, Search, Tag, UserX } from 'lucide-vue-next'
 import ResourceCollectionPanel from '@/components/common/ResourceCollectionPanel.vue'
 import SingletonConfigPanel from '@/components/common/SingletonConfigPanel.vue'
-import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
 import SortIndicator from '@/components/common/SortIndicator.vue'
+import ClientDetailDrawer from '@/components/terminals/ClientDetailDrawer.vue'
+import ClientQuickActionModal, { type QuickActionKind } from '@/components/terminals/ClientQuickActionModal.vue'
 import { useTableSort, type SortValueHint } from '@/composables/useTableSort'
 import {
-  createV4Resource,
-  fetchV4ClientDetail,
   fetchV4Clients,
   fetchV4Resource,
   kickV4OnlineUser,
-  type ClientDetailDTO,
   type ClientRecordDTO,
 } from '@/api/v4'
 import { useAppRoute } from '@/composables/useAppRoute'
 import { useAuth } from '@/composables/useAuth'
 import { useFleet } from '@/composables/useFleet'
-import { useChartTheme } from '@/composables/useChartTheme'
 import { formatBytes, formatSpeed, formatTimestamp } from '@/composables/useFormatters'
 
 const props = defineProps<{
@@ -496,7 +404,6 @@ const props = defineProps<{
 const { currentTab, syncSubTab } = useAppRoute()
 const { readOnly } = useAuth()
 const { routerEpoch } = useFleet()
-const { palette } = useChartTheme()
 
 const subTabs = [
   { key: 'online', label: 'IPv4 在线终端' },
@@ -579,43 +486,19 @@ const clients = ref<ClientRecordDTO[]>([])
 const authRows = ref<Array<Record<string, unknown>>>([])
 
 const selectedClient = ref<ClientRecordDTO | null>(null)
-const detailLoading = ref(false)
-const detailError = ref<string | null>(null)
-const clientDetail = ref<ClientDetailDTO | null>(null)
-const detailChartEl = ref<HTMLElement | null>(null)
-let detailChart: echarts.ECharts | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let clientReqSeq = 0
 let activeClientReqs = 0
 let authReqSeq = 0
-let detailReqSeq = 0
 
-const quickModal = reactive({
+const quickModal = reactive<{
+  open: boolean
+  kind: QuickActionKind
+  client: ClientRecordDTO | null
+}>({
   open: false,
-  busy: false,
-  error: null as string | null,
-  kind: 'terminal' as 'terminal' | 'static' | 'qos' | 'mac-block',
-  tagname: '',
-  ip_addr: '',
-  mac: '',
-  iface: 'lan1',
-  upload: 1000,
-  download: 5000,
-  enabled: 'yes',
-  comment: '',
-})
-
-const quickModalTitle = computed(() => {
-  switch (quickModal.kind) {
-    case 'terminal':
-      return '快捷添加终端设备标注'
-    case 'static':
-      return '快捷创建 DHCP 静态地址绑定'
-    case 'qos':
-      return '快捷创建 IP 限速流控规则'
-    case 'mac-block':
-      return '快捷添加 MAC 访问控制规则'
-  }
+  kind: 'terminal',
+  client: null,
 })
 
 const isClientMode = computed(() => ['online', 'ipv6-online', 'offline', 'summary'].includes(activeTab.value))
@@ -650,64 +533,10 @@ const sortedAuthRows = computed(() =>
   )
 )
 
-function openQuickModal(kind: 'terminal' | 'static' | 'qos' | 'mac-block', c: ClientRecordDTO) {
-  quickModal.open = true
-  quickModal.busy = false
-  quickModal.error = null
+function openQuickModal(kind: QuickActionKind, c: ClientRecordDTO) {
   quickModal.kind = kind
-  quickModal.tagname = c.comment || c.hostname || c.ip_addr || 'Device'
-  quickModal.ip_addr = c.ip_addr || ''
-  quickModal.mac = c.mac || ''
-  quickModal.iface = kind === 'qos' ? 'wan1' : 'lan1'
-  quickModal.upload = 1000
-  quickModal.download = 5000
-  quickModal.enabled = 'yes'
-  quickModal.comment = c.comment || ''
-}
-
-async function submitQuickModal() {
-  quickModal.busy = true
-  quickModal.error = null
-  try {
-    if (quickModal.kind === 'terminal') {
-      await createV4Resource('terminals', { tagname: quickModal.tagname, mac: quickModal.mac, comment: quickModal.comment })
-      showToast(`已标注终端 ${quickModal.tagname}`)
-    } else if (quickModal.kind === 'static') {
-      await createV4Resource('dhcp-static', {
-        tagname: quickModal.tagname,
-        ip_addr: quickModal.ip_addr,
-        mac: quickModal.mac,
-        interface: quickModal.iface,
-        enabled: 'yes',
-        comment: quickModal.comment,
-      })
-      showToast(`已绑定静态 IP ${quickModal.ip_addr}`)
-    } else if (quickModal.kind === 'qos') {
-      await createV4Resource('qos-ip', {
-        tagname: quickModal.tagname,
-        ip_addr: quickModal.ip_addr,
-        interface: quickModal.iface,
-        upload: quickModal.upload,
-        download: quickModal.download,
-        protocol: 'any',
-        enabled: 'yes',
-      })
-      showToast(`已为 ${quickModal.ip_addr} 应用 QoS 限速`)
-    } else if (quickModal.kind === 'mac-block') {
-      await createV4Resource('mac-rules', {
-        tagname: quickModal.tagname,
-        mac: quickModal.mac,
-        enabled: quickModal.enabled,
-        comment: quickModal.comment,
-      })
-      showToast(`已写入 MAC 控制规则 ${quickModal.mac}`)
-    }
-    quickModal.open = false
-  } catch (e: unknown) {
-    quickModal.error = extractErr(e)
-  } finally {
-    quickModal.busy = false
-  }
+  quickModal.client = c
+  quickModal.open = true
 }
 
 function extractErr(e: unknown): string {
@@ -776,67 +605,12 @@ async function kickUser(row: Record<string, unknown>) {
   }
 }
 
-async function openDetail(client: ClientRecordDTO) {
-  const seq = ++detailReqSeq
+function openDetail(client: ClientRecordDTO) {
   selectedClient.value = client
-  detailLoading.value = true
-  detailError.value = null
-  clientDetail.value = null
-  detailChart?.dispose()
-  detailChart = null
-  try {
-    const detail = await fetchV4ClientDetail(client.ip_addr, client.mac)
-    if (seq !== detailReqSeq) return
-    clientDetail.value = detail
-    await nextTick()
-    if (seq !== detailReqSeq) return
-    renderDetailChart()
-  } catch (e: unknown) {
-    if (seq !== detailReqSeq) return
-    detailError.value = extractErr(e)
-  } finally {
-    if (seq === detailReqSeq) {
-      detailLoading.value = false
-    }
-  }
 }
 
 function closeDetail() {
-  detailReqSeq += 1
   selectedClient.value = null
-  detailChart?.dispose()
-  detailChart = null
-}
-
-function renderDetailChart() {
-  if (!detailChartEl.value || !clientDetail.value) return
-  if (detailChart && detailChart.getDom() !== detailChartEl.value) {
-    detailChart.dispose()
-    detailChart = null
-  }
-  if (!detailChart) detailChart = echarts.init(detailChartEl.value)
-  const pal = palette.value
-  const list = clientDetail.value.traffic_load || []
-  detailChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis', backgroundColor: pal.tooltipBg, borderColor: pal.tooltipBorder, textStyle: { color: pal.textStrong } },
-    grid: { left: 48, right: 12, top: 18, bottom: 24 },
-    xAxis: {
-      type: 'category',
-      data: list.map((item) => {
-        const ts = Number(item.timestamp ?? 0)
-        if (!ts) return ''
-        const d = new Date(ts * 1000)
-        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      }),
-      axisLabel: { color: pal.textMuted, fontSize: 10 },
-    },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: pal.gridLine } }, axisLabel: { color: pal.textMuted, fontSize: 10 } },
-    series: [
-      { name: '下行', type: 'line', smooth: true, showSymbol: false, data: list.map((x) => Number(x.download ?? 0)), itemStyle: { color: pal.downColor } },
-      { name: '上行', type: 'line', smooth: true, showSymbol: false, data: list.map((x) => Number(x.upload ?? 0)), itemStyle: { color: pal.upColor } },
-    ],
-  }, true)
 }
 
 watch(
@@ -902,7 +676,6 @@ onActivated(() => {
   }
   startPolling()
   document.addEventListener('visibilitychange', handleVisibilityChange)
-  void nextTick(() => detailChart?.resize())
 })
 
 onDeactivated(() => {
@@ -915,7 +688,6 @@ onDeactivated(() => {
 onUnmounted(() => {
   stopPolling()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-  detailChart?.dispose()
 })
 </script>
 
@@ -967,25 +739,6 @@ onUnmounted(() => {
 .sep { margin: 0 4px; color: var(--text-faint); }
 .client-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .empty-state { padding: 36px 16px; text-align: center; color: var(--text-muted); }
-
-.drawer-backdrop { position: fixed; inset: 0; z-index: 250; background: rgba(6, 10, 20, 0.45); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); display: flex; justify-content: flex-end; }
-.drawer-backdrop.center { align-items: center; justify-content: center; }
-.drawer-panel { width: min(480px, 100vw); height: 100%; border-radius: var(--radius-xl) 0 0 var(--radius-xl); display: flex; flex-direction: column; background: var(--surface-popover); border-color: var(--chrome-border); box-shadow: var(--chrome-shadow); -webkit-backdrop-filter: var(--backdrop-chrome); backdrop-filter: var(--backdrop-chrome); }
-.drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--divider-line); display: flex; justify-content: space-between; align-items: center; }
-.drawer-head > div > strong { display: block; font-size: 15px; }
-.drawer-head > div > span { font-size: 11px; color: var(--text-muted); }
-.drawer-body { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
-.detail-section h4 { margin: 0 0 10px; font-size: 13px; color: var(--text-strong); }
-.detail-chart { width: 100%; height: 220px; }
-.app-list { display: flex; flex-direction: column; gap: 8px; }
-.app-row { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--divider-line); background: var(--surface-input); font-size: 12px; }
-
-.confirm-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; background: var(--surface-popover); border-color: var(--chrome-border); box-shadow: var(--chrome-shadow); -webkit-backdrop-filter: var(--backdrop-chrome); backdrop-filter: var(--backdrop-chrome); display: flex; flex-direction: column; gap: 12px; }
-.modal-top { display: flex; justify-content: space-between; align-items: center; }
-.modal-top h4 { margin: 0; font-size: 15px; }
-.modal-form { display: flex; flex-direction: column; gap: 10px; }
-.field-item { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text-normal); }
-.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .spin { animation: spin 0.9s linear infinite; }
 
 @media (max-width: 768px) {
@@ -1001,8 +754,5 @@ onUnmounted(() => {
   .search-box { min-width: 100%; max-width: none; }
   .toolbar-right { width: 100%; }
   .sort-select { flex: 1; min-width: 0; }
-  .drawer-backdrop { align-items: flex-end; }
-  .drawer-panel { width: 100%; height: auto; max-height: 88dvh; border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
-  .drawer-body { padding: 14px 16px; }
 }
 </style>

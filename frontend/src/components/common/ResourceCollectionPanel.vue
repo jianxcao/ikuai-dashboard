@@ -452,243 +452,40 @@
     </teleport>
 
     <!-- Row JSON Inspector Drawer -->
-    <teleport to="body">
-      <div v-if="inspectRow" class="drawer-backdrop" @click.self="inspectRow = null">
-        <div class="drawer-panel v4-panel" role="dialog" aria-label="记录详情 JSON">
-          <div class="drawer-head">
-            <div>
-              <strong>{{ spec?.label }} · 记录完整字段</strong>
-              <span class="font-mono">{{ spec?.v4_path }}</span>
-            </div>
-            <button type="button" class="icon-btn" @click="inspectRow = null"><X :size="16" /></button>
-          </div>
-          <div class="drawer-body">
-            <pre class="json-pre font-mono">{{ JSON.stringify(inspectRow, null, 2) }}</pre>
-          </div>
-          <div class="drawer-foot">
-            <button type="button" class="v4-btn" @click="copyInspectJson">
-              <Copy :size="14" />
-              <span>复制 JSON</span>
-            </button>
-            <button
-              v-if="canUpdate && !readOnly"
-              type="button"
-              class="v4-btn v4-btn-primary"
-              @click="openEditFromInspector"
-            >
-              <Pencil :size="14" />
-              <span>编辑此记录</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </teleport>
+    <JsonInspectorDrawer
+      :row="inspectRow"
+      :label="spec?.label"
+      :v4Path="spec?.v4_path"
+      :canEdit="canUpdate && !readOnly"
+      @close="inspectRow = null"
+      @copied="showToast('已复制完整 JSON 到剪贴板')"
+      @edit="openEditFromInspector"
+    />
 
     <!-- Object References Modal -->
-    <teleport to="body">
-      <div v-if="refsModal.open" class="drawer-backdrop center" @click.self="refsModal.open = false">
-        <div class="confirm-dialog v4-panel modal-wide">
-          <div class="modal-top">
-            <h4>对象组引用关系 · {{ refsModal.groupName }}</h4>
-            <button type="button" class="icon-btn" @click="refsModal.open = false"><X :size="14" /></button>
-          </div>
-          <div v-if="refsModal.loading" class="loading-state"><div class="spinner" /></div>
-          <div v-else-if="refsModal.error" class="error-banner">{{ refsModal.error }}</div>
-          <div v-else-if="refsModal.rows.length === 0" class="empty-state">当前未被任何策略或分流规则引用</div>
-          <template v-else>
-            <div v-if="refJumpTargets.length > 0" class="ref-jump-bar">
-              <button
-                v-for="target in refJumpTargets"
-                :key="target.key"
-                type="button"
-                class="v4-btn btn-xs"
-                @click="jumpToRefModule(target.tab, target.key)"
-              >
-                <ExternalLink :size="12" />
-                <span>前往「{{ target.label }}」</span>
-              </button>
-            </div>
-            <pre class="json-pre font-mono">{{ JSON.stringify(refsModal.rows, null, 2) }}</pre>
-          </template>
-        </div>
-      </div>
-    </teleport>
+    <ObjectRefsModal
+      :open="refsModal.open"
+      :resourceKey="resourceKey"
+      :groupName="refsModal.groupName"
+      @close="refsModal.open = false"
+      @jump="jumpToRefModule($event.tab, $event.key)"
+    />
 
     <!-- DHCP Lease -> Static Quick Bind Modal -->
-    <teleport to="body">
-      <div v-if="bindStatic.open" class="drawer-backdrop center" @click.self="bindStatic.open = false">
-        <div class="confirm-dialog v4-panel modal-wide">
-          <div class="modal-top">
-            <h4>将动态租约转为 DHCP 静态绑定</h4>
-            <button type="button" class="icon-btn" @click="bindStatic.open = false"><X :size="14" /></button>
-          </div>
-          <div v-if="bindStatic.error" class="error-banner">{{ bindStatic.error }}</div>
-          <div class="form-grid">
-            <label class="form-field">
-              <span class="field-label">设备名称</span>
-              <input v-model="bindStatic.tagname" class="v4-input" />
-            </label>
-            <label class="form-field">
-              <span class="field-label">固定 IP</span>
-              <input v-model="bindStatic.ip_addr" class="v4-input font-mono" />
-            </label>
-            <label class="form-field">
-              <span class="field-label">MAC 地址</span>
-              <input v-model="bindStatic.mac" class="v4-input font-mono" />
-            </label>
-            <div class="form-field">
-              <span class="field-label">所属接口</span>
-              <InterfaceSelect v-model="bindStatic.interface" scope="lan" />
-            </div>
-          </div>
-          <div class="confirm-actions">
-            <button type="button" class="v4-btn" @click="bindStatic.open = false">取消</button>
-            <button type="button" class="v4-btn v4-btn-primary" :disabled="bindStatic.busy" @click="submitBindStatic">
-              {{ bindStatic.busy ? '绑定中...' : '确认绑定' }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </teleport>
+    <DhcpStaticBindModal
+      :open="bindStatic.open"
+      :leaseRow="bindStatic.row"
+      @close="bindStatic.open = false"
+      @bound="showToast(`已将 ${$event} 加入 DHCP 静态绑定`)"
+    />
 
     <!-- WireGuard Peers Manager Drawer -->
-    <teleport to="body">
-      <div v-if="peersModal.open" class="drawer-backdrop" @click.self="peersModal.open = false">
-        <div class="drawer-panel v4-panel wide-drawer" role="dialog" aria-label="WireGuard Peers 管理">
-          <div class="drawer-head">
-            <div>
-              <strong>WireGuard Peers · {{ peersModal.wgName }} (#{{ peersModal.wgId }})</strong>
-              <span class="font-mono">/vpn/wireguard/{{ peersModal.wgId }}/peers</span>
-            </div>
-            <button type="button" class="icon-btn" @click="peersModal.open = false"><X :size="16" /></button>
-          </div>
-
-          <div class="drawer-body">
-            <div v-if="peersModal.error" class="error-banner">{{ peersModal.error }}</div>
-
-            <div class="peer-form v4-card">
-              <div class="form-grid two-cols">
-                <label class="form-field wide-col">
-                  <span class="field-label">对端公钥 (peer_publickey) *</span>
-                  <input v-model.trim="peersModal.form.peer_publickey" class="v4-input font-mono" placeholder="Base64 公钥" />
-                </label>
-                <label class="form-field">
-                  <span class="field-label">允许子网 (allowips) *</span>
-                  <input v-model.trim="peersModal.form.allowips" class="v4-input font-mono" placeholder="10.9.0.2/32" />
-                </label>
-                <label class="form-field">
-                  <span class="field-label">对端 Endpoint</span>
-                  <input v-model.trim="peersModal.form.endpoint" class="v4-input font-mono" placeholder="可选 IP/域名" />
-                </label>
-                <label class="form-field">
-                  <span class="field-label">对端端口</span>
-                  <input v-model.number="peersModal.form.endpoint_port" type="number" class="v4-input font-mono" />
-                </label>
-                <label class="form-field">
-                  <span class="field-label">备注</span>
-                  <input v-model.trim="peersModal.form.comment" class="v4-input" placeholder="分支节点" />
-                </label>
-              </div>
-              <div class="confirm-actions">
-                <button type="button" class="v4-btn v4-btn-primary btn-xs" :disabled="readOnly || peersModal.busy" @click="addPeer">
-                  <Plus :size="13" />
-                  <span>添加 Peer</span>
-                </button>
-              </div>
-            </div>
-
-            <div v-if="peersModal.loading" class="loading-state"><div class="spinner" /></div>
-            <div v-else-if="peersModal.rows.length === 0" class="empty-state">该隧道暂无 Peer 对端</div>
-            <table v-else class="v4-table">
-              <thead>
-                <tr>
-                  <th
-                    class="sortable-th"
-                    :class="{ 'is-sorted': peerSort.sortKey.value === 'id' }"
-                    :aria-sort="peerSort.ariaSort('id')"
-                    tabindex="0"
-                    @click="peerSort.toggleSort('id')"
-                    @keydown.enter.prevent="peerSort.toggleSort('id')"
-                    @keydown.space.prevent="peerSort.toggleSort('id')"
-                  >
-                    <span class="sort-th-inner">
-                      <span>ID</span>
-                      <SortIndicator :active="peerSort.sortKey.value === 'id'" :dir="peerSort.sortDir.value" />
-                    </span>
-                  </th>
-                  <th
-                    class="sortable-th"
-                    :class="{ 'is-sorted': peerSort.sortKey.value === 'allowips' }"
-                    :aria-sort="peerSort.ariaSort('allowips')"
-                    tabindex="0"
-                    @click="peerSort.toggleSort('allowips')"
-                    @keydown.enter.prevent="peerSort.toggleSort('allowips')"
-                    @keydown.space.prevent="peerSort.toggleSort('allowips')"
-                  >
-                    <span class="sort-th-inner">
-                      <span>允许子网</span>
-                      <SortIndicator :active="peerSort.sortKey.value === 'allowips'" :dir="peerSort.sortDir.value" />
-                    </span>
-                  </th>
-                  <th
-                    class="sortable-th"
-                    :class="{ 'is-sorted': peerSort.sortKey.value === 'endpoint' }"
-                    :aria-sort="peerSort.ariaSort('endpoint')"
-                    tabindex="0"
-                    @click="peerSort.toggleSort('endpoint')"
-                    @keydown.enter.prevent="peerSort.toggleSort('endpoint')"
-                    @keydown.space.prevent="peerSort.toggleSort('endpoint')"
-                  >
-                    <span class="sort-th-inner">
-                      <span>Endpoint</span>
-                      <SortIndicator :active="peerSort.sortKey.value === 'endpoint'" :dir="peerSort.sortDir.value" />
-                    </span>
-                  </th>
-                  <th
-                    class="sortable-th"
-                    :class="{ 'is-sorted': peerSort.sortKey.value === 'enabled' }"
-                    :aria-sort="peerSort.ariaSort('enabled')"
-                    tabindex="0"
-                    @click="peerSort.toggleSort('enabled')"
-                    @keydown.enter.prevent="peerSort.toggleSort('enabled')"
-                    @keydown.space.prevent="peerSort.toggleSort('enabled')"
-                  >
-                    <span class="sort-th-inner">
-                      <span>启用</span>
-                      <SortIndicator :active="peerSort.sortKey.value === 'enabled'" :dir="peerSort.sortDir.value" />
-                    </span>
-                  </th>
-                  <th>删除</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="peer in sortedPeers" :key="String(peer.id)">
-                  <td class="font-mono">{{ peer.id }}</td>
-                  <td class="font-mono">{{ peer.allowips }}</td>
-                  <td class="font-mono">{{ peer.endpoint ? `${peer.endpoint}:${peer.endpoint_port || 51820}` : '动态' }}</td>
-                  <td>
-                    <button
-                      type="button"
-                      class="toggle-switch"
-                      :class="{ on: isTruthy(peer.enabled) }"
-                      :disabled="readOnly"
-                      @click="flipPeer(peer)"
-                    >
-                      <span class="knob" />
-                    </button>
-                  </td>
-                  <td>
-                    <button type="button" class="icon-btn danger" :disabled="readOnly" @click="removePeer(peer)">
-                      <Trash2 :size="13" />
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </teleport>
+    <WireGuardPeersDrawer
+      :open="peersModal.open"
+      :wgRow="peersModal.row"
+      :readOnly="readOnly"
+      @close="peersModal.open = false"
+    />
 
     <!-- Object Group Quick Edit & Jump Modal -->
     <ObjectGroupQuickModal
@@ -723,7 +520,6 @@ import {
   Braces,
   Check,
   Copy,
-  ExternalLink,
   Eye,
   FolderOpen,
   KeyRound,
@@ -743,22 +539,17 @@ import {
 } from 'lucide-vue-next'
 import {
   createV4Resource,
-  createWGPeer,
   deleteV4Resource,
-  deleteWGPeer,
   executeV4Action,
-  fetchObjectRefs,
   fetchV4Resource,
-  fetchWGPeers,
   generateWGKeypair,
   toggleV4Resource,
-  toggleWGPeer,
   updateV4Resource,
   type ActionSpec,
   type ColumnSpec,
   type ResourceSpec,
 } from '@/api/v4'
-import { resolveResourceTab, useAppRoute } from '@/composables/useAppRoute'
+import { useAppRoute } from '@/composables/useAppRoute'
 import { useAuth } from '@/composables/useAuth'
 import { useCatalog } from '@/composables/useCatalog'
 import { useFleet } from '@/composables/useFleet'
@@ -766,6 +557,10 @@ import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
 import ObjectGroupFieldBar from '@/components/common/ObjectGroupFieldBar.vue'
 import ObjectGroupQuickModal from '@/components/common/ObjectGroupQuickModal.vue'
 import SortIndicator from '@/components/common/SortIndicator.vue'
+import DhcpStaticBindModal from '@/components/resources/DhcpStaticBindModal.vue'
+import JsonInspectorDrawer from '@/components/resources/JsonInspectorDrawer.vue'
+import ObjectRefsModal from '@/components/resources/ObjectRefsModal.vue'
+import WireGuardPeersDrawer from '@/components/resources/WireGuardPeersDrawer.vue'
 import { compoundToCSV, formatBytes, formatCompoundValue, formatTimestamp } from '@/composables/useFormatters'
 import { extractCompoundParts, getFieldObjectGroup, type ObjectGroupKey, useObjectGroups } from '@/composables/useObjectGroups'
 import { type SortValueHint, useTableSort } from '@/composables/useTableSort'
@@ -840,47 +635,23 @@ const tableSort = useTableSort<string>({
   },
 })
 
-const peerSort = useTableSort<'id' | 'allowips' | 'endpoint' | 'enabled'>({
-  defaultDirForKey: (key) => (key === 'enabled' ? 'desc' : 'asc'),
-})
-
 const inspectRow = ref<Record<string, unknown> | null>(null)
 const deleteTarget = ref<{ id?: string; srcfile?: string; label: string } | null>(null)
 
-const refsModal = reactive<{
+const refsModal = reactive({
+  open: false,
+  groupName: '',
+})
+
+const bindStatic = reactive<{
   open: boolean
-  loading: boolean
-  groupName: string
-  rows: Array<Record<string, unknown>>
-  error: string | null
-}>({ open: false, loading: false, groupName: '', rows: [], error: null })
+  row: Record<string, unknown> | null
+}>({ open: false, row: null })
 
-const bindStatic = reactive({
-  open: false,
-  busy: false,
-  error: null as string | null,
-  tagname: '',
-  ip_addr: '',
-  mac: '',
-  interface: 'lan1',
-})
-
-const peersModal = reactive({
-  open: false,
-  loading: false,
-  busy: false,
-  error: null as string | null,
-  wgId: '',
-  wgName: '',
-  rows: [] as Array<Record<string, unknown>>,
-  form: {
-    peer_publickey: '',
-    allowips: '10.9.0.2/32',
-    endpoint: '',
-    endpoint_port: 51820,
-    comment: '',
-  },
-})
+const peersModal = reactive<{
+  open: boolean
+  row: Record<string, unknown> | null
+}>({ open: false, row: null })
 
 const RESOURCE_COPY_MAP: Record<string, { createLabel: string; noun: string }> = {
   'dhcp-services': { createLabel: '新建地址池', noun: '地址池' },
@@ -965,33 +736,6 @@ const sortedRows = computed(() => {
     ]
   }
   return tableSort.sortRows(rows.value, (r, k) => r[k], columnSortHint)
-})
-
-const sortedPeers = computed(() =>
-  peerSort.sortRows(
-    peersModal.rows,
-    (peer, key) => {
-      if (key === 'endpoint') {
-        return peer.endpoint ? `${peer.endpoint}:${peer.endpoint_port || 51820}` : ''
-      }
-      return peer[key]
-    },
-    (key) => (key === 'enabled' ? 'boolean' : key === 'id' ? 'number' : 'auto')
-  )
-)
-
-const refJumpTargets = computed(() => {
-  const seen = new Set<string>()
-  const out: Array<{ key: string; label: string; tab: string }> = []
-  for (const r of refsModal.rows) {
-    const modKey = String(r.module ?? '').trim()
-    if (!modKey || seen.has(modKey)) continue
-    const targetSpec = getSpec(modKey)
-    if (!targetSpec) continue
-    seen.add(modKey)
-    out.push({ key: modKey, label: targetSpec.label, tab: resolveResourceTab(targetSpec.group) })
-  }
-  return out
 })
 
 function colGroupKey(fieldKey: string): ObjectGroupKey | null {
@@ -1129,19 +873,7 @@ async function copyCLI() {
   }
 }
 
-async function copyInspectJson() {
-  if (!inspectRow.value) return
-  try {
-    await navigator.clipboard.writeText(JSON.stringify(inspectRow.value, null, 2))
-    showToast('已复制完整 JSON 到剪贴板')
-  } catch {
-    // ignore
-  }
-}
-
-function openEditFromInspector() {
-  if (!inspectRow.value) return
-  const target = inspectRow.value
+function openEditFromInspector(target: Record<string, unknown>) {
   inspectRow.value = null
   openEditDrawer(target)
 }
@@ -1500,112 +1232,19 @@ async function handleAction(act: ActionSpec) {
   }
 }
 
-async function openRefsModal(groupName: string) {
-  refsModal.open = true
-  refsModal.loading = true
+function openRefsModal(groupName: string) {
   refsModal.groupName = groupName
-  refsModal.rows = []
-  refsModal.error = null
-  try {
-    const res = await fetchObjectRefs(props.resourceKey, groupName)
-    refsModal.rows = res.rows || []
-  } catch (e: unknown) {
-    refsModal.error = extractError(e)
-  } finally {
-    refsModal.loading = false
-  }
+  refsModal.open = true
 }
 
 function openBindStaticModal(row: Record<string, unknown>) {
+  bindStatic.row = row
   bindStatic.open = true
-  bindStatic.error = null
-  bindStatic.tagname = String(row.hostname || 'StaticDevice')
-  bindStatic.ip_addr = String(row.ip_addr || '')
-  bindStatic.mac = String(row.mac || '')
-  bindStatic.interface = String(row.interface || 'lan1')
 }
 
-async function submitBindStatic() {
-  bindStatic.busy = true
-  bindStatic.error = null
-  try {
-    await createV4Resource('dhcp-static', {
-      tagname: bindStatic.tagname,
-      ip_addr: bindStatic.ip_addr,
-      mac: bindStatic.mac,
-      interface: bindStatic.interface,
-      enabled: 'yes',
-    })
-    bindStatic.open = false
-    showToast(`已将 ${bindStatic.ip_addr} 加入 DHCP 静态绑定`)
-  } catch (e: unknown) {
-    bindStatic.error = extractError(e)
-  } finally {
-    bindStatic.busy = false
-  }
-}
-
-async function openPeersModal(row: Record<string, unknown>) {
+function openPeersModal(row: Record<string, unknown>) {
+  peersModal.row = row
   peersModal.open = true
-  peersModal.wgId = String(row.id ?? '')
-  peersModal.wgName = String(row.name ?? peersModal.wgId)
-  peersModal.error = null
-  peerSort.resetSort()
-  await reloadPeers()
-}
-
-async function reloadPeers() {
-  peersModal.loading = true
-  peersModal.error = null
-  try {
-    const res = await fetchWGPeers(peersModal.wgId)
-    peersModal.rows = res.rows || []
-  } catch (e: unknown) {
-    peersModal.error = extractError(e)
-  } finally {
-    peersModal.loading = false
-  }
-}
-
-async function addPeer() {
-  if (!peersModal.form.peer_publickey || !peersModal.form.allowips) {
-    peersModal.error = '请填写对端公钥和允许子网'
-    return
-  }
-  peersModal.busy = true
-  peersModal.error = null
-  try {
-    await createWGPeer(peersModal.wgId, {
-      ...peersModal.form,
-      interface: peersModal.wgName,
-      enabled: 'yes',
-    })
-    peersModal.form.peer_publickey = ''
-    await reloadPeers()
-  } catch (e: unknown) {
-    peersModal.error = extractError(e)
-  } finally {
-    peersModal.busy = false
-  }
-}
-
-async function flipPeer(peer: Record<string, unknown>) {
-  try {
-    const next = isTruthy(peer.enabled) ? 'no' : 'yes'
-    await toggleWGPeer(peersModal.wgId, String(peer.id), next)
-    peer.enabled = next
-  } catch (e: unknown) {
-    peersModal.error = extractError(e)
-  }
-}
-
-async function removePeer(peer: Record<string, unknown>) {
-  try {
-    await deleteWGPeer(peersModal.wgId, String(peer.id))
-    await reloadPeers()
-  } catch (e: unknown) {
-    peersModal.error = extractError(e)
-  }
 }
 
 function showToast(msg: string) {
