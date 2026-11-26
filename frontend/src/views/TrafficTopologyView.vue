@@ -65,15 +65,26 @@
           <table class="v4-table">
             <thead>
               <tr>
-                <th>应用名称</th>
-                <th>连接数</th>
-                <th>实时上行</th>
-                <th>实时下行</th>
-                <th>累计下行</th>
+                <th
+                  v-for="col in appLoadColumns"
+                  :key="col.key"
+                  class="sortable-th"
+                  :class="{ 'is-sorted': appLoadSort.sortKey.value === col.key }"
+                  :aria-sort="appLoadSort.ariaSort(col.key)"
+                  tabindex="0"
+                  @click="appLoadSort.toggleSort(col.key)"
+                  @keydown.enter.prevent="appLoadSort.toggleSort(col.key)"
+                  @keydown.space.prevent="appLoadSort.toggleSort(col.key)"
+                >
+                  <span class="sort-th-inner">
+                    <span>{{ col.label }}</span>
+                    <SortIndicator :active="appLoadSort.sortKey.value === col.key" :dir="appLoadSort.sortDir.value" />
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(row, idx) in analytics.app_load" :key="idx">
+              <tr v-for="(row, idx) in sortedAppLoad" :key="String(row.appname ?? row.app_name ?? idx)">
                 <td><strong>{{ String(row.appname ?? row.app_name ?? '未知') }}</strong></td>
                 <td class="font-mono">{{ row.conn_cnt ?? row.connect_num ?? 0 }}</td>
                 <td class="font-mono ic-up">{{ formatSpeed(Number(row.upload ?? 0)) }}</td>
@@ -136,6 +147,8 @@ import { useAppRoute } from '@/composables/useAppRoute'
 import { useFleet } from '@/composables/useFleet'
 import { useChartTheme } from '@/composables/useChartTheme'
 import { formatBytes, formatSpeed } from '@/composables/useFormatters'
+import SortIndicator from '@/components/common/SortIndicator.vue'
+import { useTableSort, type SortValueHint } from '@/composables/useTableSort'
 
 const props = defineProps<{
   initialSubResource?: string
@@ -187,6 +200,40 @@ const maxAppBytes = computed(() => {
   const list = analytics.value?.app_summary || []
   return Math.max(1, ...list.map((i) => Number(i.total_down ?? 0)))
 })
+
+type AppLoadSortKey = 'name' | 'connections' | 'upload' | 'download' | 'total_down'
+const appLoadColumns: Array<{ key: AppLoadSortKey; label: string; hint: SortValueHint }> = [
+  { key: 'name', label: '应用名称', hint: 'text' },
+  { key: 'connections', label: '连接数', hint: 'number' },
+  { key: 'upload', label: '实时上行', hint: 'number' },
+  { key: 'download', label: '实时下行', hint: 'number' },
+  { key: 'total_down', label: '累计下行', hint: 'number' },
+]
+
+const appLoadSort = useTableSort<AppLoadSortKey>({
+  defaultDirForKey: (key) => (key === 'name' ? 'asc' : 'desc'),
+})
+
+const sortedAppLoad = computed(() =>
+  appLoadSort.sortRows(
+    analytics.value?.app_load || [],
+    (row, key) => {
+      switch (key) {
+        case 'name':
+          return String(row.appname ?? row.app_name ?? '')
+        case 'connections':
+          return Number(row.conn_cnt ?? row.connect_num ?? 0)
+        case 'upload':
+          return Number(row.upload ?? 0)
+        case 'download':
+          return Number(row.download ?? 0)
+        case 'total_down':
+          return Number(row.total_down ?? 0)
+      }
+    },
+    (key) => appLoadColumns.find((c) => c.key === key)?.hint ?? 'auto'
+  )
+)
 
 function appPercent(item: Record<string, unknown>): number {
   return Math.max(6, Math.round((Number(item.total_down ?? 0) / maxAppBytes.value) * 100))

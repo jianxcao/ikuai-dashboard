@@ -39,12 +39,27 @@
           </div>
 
           <div class="toolbar-right">
-            <select v-model="sortBy" class="v4-select sort-select" aria-label="排序方式">
+            <select v-model="selectedClientSortKey" class="v4-select sort-select" aria-label="排序方式">
               <option value="download_speed">按实时下行排序</option>
               <option value="upload_speed">按实时上行排序</option>
               <option value="total_down">按累计下行排序</option>
+              <option value="total_up">按累计上行排序</option>
               <option value="connections">按连接数排序</option>
+              <option value="uptime">按在线时长排序</option>
+              <option value="ip_addr">按 IP 地址排序</option>
+              <option value="mac">按 MAC 地址排序</option>
+              <option value="name">按终端名称排序</option>
             </select>
+            <button
+              type="button"
+              class="v4-btn sort-dir-btn"
+              :title="clientSort.sortDir.value === 'asc' ? '当前升序，点击切换降序' : '当前降序，点击切换升序'"
+              @click="toggleClientSortDirection"
+            >
+              <ArrowUp v-if="clientSort.sortDir.value === 'asc'" :size="14" />
+              <ArrowDown v-else :size="14" />
+              <span>{{ clientSort.sortDir.value === 'asc' ? '升序' : '降序' }}</span>
+            </button>
             <button type="button" class="v4-btn" :disabled="loading" @click="loadClients">
               <RefreshCw :size="14" :class="{ spin: loading }" />
               <span>刷新</span>
@@ -63,13 +78,140 @@
           <table v-else class="v4-table">
             <thead>
               <tr>
-                <th>终端名称 / 备注</th>
-                <th>IP 地址</th>
-                <th>MAC 地址</th>
-                <th>实时上行 / 下行</th>
-                <th>累计上行 / 下行</th>
-                <th>连接数</th>
-                <th>在线时长</th>
+                <th
+                  class="sortable-th"
+                  :class="{ 'is-sorted': clientSort.sortKey.value === 'name' }"
+                  :aria-sort="clientSort.ariaSort('name')"
+                  tabindex="0"
+                  @click="clientSort.toggleSort('name')"
+                  @keydown.enter.prevent="clientSort.toggleSort('name')"
+                  @keydown.space.prevent="clientSort.toggleSort('name')"
+                >
+                  <span class="sort-th-inner">
+                    <span>终端名称 / 备注</span>
+                    <SortIndicator :active="clientSort.sortKey.value === 'name'" :dir="clientSort.sortDir.value" />
+                  </span>
+                </th>
+                <th
+                  class="sortable-th"
+                  :class="{ 'is-sorted': clientSort.sortKey.value === 'ip_addr' }"
+                  :aria-sort="clientSort.ariaSort('ip_addr')"
+                  tabindex="0"
+                  @click="clientSort.toggleSort('ip_addr')"
+                  @keydown.enter.prevent="clientSort.toggleSort('ip_addr')"
+                  @keydown.space.prevent="clientSort.toggleSort('ip_addr')"
+                >
+                  <span class="sort-th-inner">
+                    <span>IP 地址</span>
+                    <SortIndicator :active="clientSort.sortKey.value === 'ip_addr'" :dir="clientSort.sortDir.value" />
+                  </span>
+                </th>
+                <th
+                  class="sortable-th"
+                  :class="{ 'is-sorted': clientSort.sortKey.value === 'mac' }"
+                  :aria-sort="clientSort.ariaSort('mac')"
+                  tabindex="0"
+                  @click="clientSort.toggleSort('mac')"
+                  @keydown.enter.prevent="clientSort.toggleSort('mac')"
+                  @keydown.space.prevent="clientSort.toggleSort('mac')"
+                >
+                  <span class="sort-th-inner">
+                    <span>MAC 地址</span>
+                    <SortIndicator :active="clientSort.sortKey.value === 'mac'" :dir="clientSort.sortDir.value" />
+                  </span>
+                </th>
+                <th
+                  :aria-sort="
+                    clientSort.sortKey.value === 'upload_speed' || clientSort.sortKey.value === 'download_speed'
+                      ? clientSort.sortDir.value === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                  "
+                >
+                  <div class="dual-sort-th">
+                    <span>实时</span>
+                    <button
+                      type="button"
+                      class="sort-sub-btn"
+                      :class="{ active: clientSort.sortKey.value === 'upload_speed' }"
+                      @click="clientSort.toggleSort('upload_speed')"
+                    >
+                      <span>上行</span>
+                      <SortIndicator :active="clientSort.sortKey.value === 'upload_speed'" :dir="clientSort.sortDir.value" />
+                    </button>
+                    <span>/</span>
+                    <button
+                      type="button"
+                      class="sort-sub-btn"
+                      :class="{ active: clientSort.sortKey.value === 'download_speed' }"
+                      @click="clientSort.toggleSort('download_speed')"
+                    >
+                      <span>下行</span>
+                      <SortIndicator :active="clientSort.sortKey.value === 'download_speed'" :dir="clientSort.sortDir.value" />
+                    </button>
+                  </div>
+                </th>
+                <th
+                  :aria-sort="
+                    clientSort.sortKey.value === 'total_up' || clientSort.sortKey.value === 'total_down'
+                      ? clientSort.sortDir.value === 'asc'
+                        ? 'ascending'
+                        : 'descending'
+                      : 'none'
+                  "
+                >
+                  <div class="dual-sort-th">
+                    <span>累计</span>
+                    <button
+                      type="button"
+                      class="sort-sub-btn"
+                      :class="{ active: clientSort.sortKey.value === 'total_up' }"
+                      @click="clientSort.toggleSort('total_up')"
+                    >
+                      <span>上行</span>
+                      <SortIndicator :active="clientSort.sortKey.value === 'total_up'" :dir="clientSort.sortDir.value" />
+                    </button>
+                    <span>/</span>
+                    <button
+                      type="button"
+                      class="sort-sub-btn"
+                      :class="{ active: clientSort.sortKey.value === 'total_down' }"
+                      @click="clientSort.toggleSort('total_down')"
+                    >
+                      <span>下行</span>
+                      <SortIndicator :active="clientSort.sortKey.value === 'total_down'" :dir="clientSort.sortDir.value" />
+                    </button>
+                  </div>
+                </th>
+                <th
+                  class="sortable-th"
+                  :class="{ 'is-sorted': clientSort.sortKey.value === 'connections' }"
+                  :aria-sort="clientSort.ariaSort('connections')"
+                  tabindex="0"
+                  @click="clientSort.toggleSort('connections')"
+                  @keydown.enter.prevent="clientSort.toggleSort('connections')"
+                  @keydown.space.prevent="clientSort.toggleSort('connections')"
+                >
+                  <span class="sort-th-inner">
+                    <span>连接数</span>
+                    <SortIndicator :active="clientSort.sortKey.value === 'connections'" :dir="clientSort.sortDir.value" />
+                  </span>
+                </th>
+                <th
+                  class="sortable-th"
+                  :class="{ 'is-sorted': clientSort.sortKey.value === 'uptime' }"
+                  :aria-sort="clientSort.ariaSort('uptime')"
+                  tabindex="0"
+                  @click="clientSort.toggleSort('uptime')"
+                  @keydown.enter.prevent="clientSort.toggleSort('uptime')"
+                  @keydown.space.prevent="clientSort.toggleSort('uptime')"
+                >
+                  <span class="sort-th-inner">
+                    <span>在线时长</span>
+                    <SortIndicator :active="clientSort.sortKey.value === 'uptime'" :dir="clientSort.sortDir.value" />
+                  </span>
+                </th>
                 <th>快捷管控与画像</th>
               </tr>
             </thead>
@@ -171,18 +313,27 @@
           <table v-else class="v4-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>账号</th>
-                <th>认证类型</th>
-                <th>IP 地址</th>
-                <th>MAC</th>
-                <th>接口</th>
-                <th>上线时间</th>
+                <th
+                  v-for="col in authColumns"
+                  :key="col.key"
+                  class="sortable-th"
+                  :class="{ 'is-sorted': authSort.sortKey.value === col.key }"
+                  :aria-sort="authSort.ariaSort(col.key)"
+                  tabindex="0"
+                  @click="authSort.toggleSort(col.key)"
+                  @keydown.enter.prevent="authSort.toggleSort(col.key)"
+                  @keydown.space.prevent="authSort.toggleSort(col.key)"
+                >
+                  <span class="sort-th-inner">
+                    <span>{{ col.label }}</span>
+                    <SortIndicator :active="authSort.sortKey.value === col.key" :dir="authSort.sortDir.value" />
+                  </span>
+                </th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in authRows" :key="String(row.id)">
+              <tr v-for="row in sortedAuthRows" :key="String(row.id)">
                 <td class="font-mono">{{ row.id }}</td>
                 <td><strong>{{ row.username }}</strong></td>
                 <td><span class="v4-badge">{{ row.ppptype }}</span></td>
@@ -272,13 +423,13 @@
               <span>MAC 地址</span>
               <input v-model.trim="quickModal.mac" class="v4-input font-mono" />
             </label>
-            <label v-if="quickModal.kind === 'static' || quickModal.kind === 'qos'" class="field-item">
+            <div v-if="quickModal.kind === 'static' || quickModal.kind === 'qos'" class="field-item">
               <span>生效接口</span>
               <InterfaceSelect
                 v-model="quickModal.iface"
                 :scope="quickModal.kind === 'qos' ? 'wan-all' : 'lan'"
               />
-            </label>
+            </div>
             <template v-if="quickModal.kind === 'qos'">
               <label class="field-item">
                 <span>上行限速 (Kbps)</span>
@@ -316,10 +467,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { echarts } from '@/lib/echarts'
-import { Ban, BarChart3, Gauge, Pin, RefreshCw, Search, Tag, UserX, X } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, Ban, BarChart3, Gauge, Pin, RefreshCw, Search, Tag, UserX, X } from 'lucide-vue-next'
 import ResourceCollectionPanel from '@/components/common/ResourceCollectionPanel.vue'
 import SingletonConfigPanel from '@/components/common/SingletonConfigPanel.vue'
 import InterfaceSelect from '@/components/common/InterfaceSelect.vue'
+import SortIndicator from '@/components/common/SortIndicator.vue'
+import { useTableSort, type SortValueHint } from '@/composables/useTableSort'
 import {
   createV4Resource,
   fetchV4ClientDetail,
@@ -373,7 +526,52 @@ function selectSubTab(key: string) {
 }
 const subtabBarEl = ref<HTMLElement | null>(null)
 const search = ref('')
-const sortBy = ref<'download_speed' | 'upload_speed' | 'total_down' | 'connections'>('download_speed')
+type ClientSortKey =
+  | 'name'
+  | 'ip_addr'
+  | 'mac'
+  | 'upload_speed'
+  | 'download_speed'
+  | 'total_up'
+  | 'total_down'
+  | 'connections'
+  | 'uptime'
+
+const TEXT_ASC_CLIENT_KEYS = new Set<ClientSortKey>(['name', 'ip_addr', 'mac'])
+const clientSort = useTableSort<ClientSortKey>({
+  initialKey: 'download_speed',
+  initialDir: 'desc',
+  allowUnsorted: false,
+  defaultDirForKey: (key) => (TEXT_ASC_CLIENT_KEYS.has(key) ? 'asc' : 'desc'),
+})
+
+const selectedClientSortKey = computed<ClientSortKey>({
+  get: () => clientSort.sortKey.value || 'download_speed',
+  set: (key) => {
+    const defaultDir = TEXT_ASC_CLIENT_KEYS.has(key) ? 'asc' : 'desc'
+    clientSort.setSort(key, defaultDir)
+  },
+})
+
+function toggleClientSortDirection() {
+  const key = selectedClientSortKey.value
+  clientSort.setSort(key, clientSort.sortDir.value === 'asc' ? 'desc' : 'asc')
+}
+
+type AuthSortKey = 'id' | 'username' | 'ppptype' | 'ip_addr' | 'mac' | 'interface' | 'auth_time'
+const authColumns: Array<{ key: AuthSortKey; label: string; hint: SortValueHint }> = [
+  { key: 'id', label: 'ID', hint: 'number' },
+  { key: 'username', label: '账号', hint: 'auto' },
+  { key: 'ppptype', label: '认证类型', hint: 'auto' },
+  { key: 'ip_addr', label: 'IP 地址', hint: 'ip' },
+  { key: 'mac', label: 'MAC', hint: 'auto' },
+  { key: 'interface', label: '接口', hint: 'auto' },
+  { key: 'auth_time', label: '上线时间', hint: 'number' },
+]
+
+const authSort = useTableSort<AuthSortKey>({
+  defaultDirForKey: (key) => (key === 'auth_time' ? 'desc' : 'asc'),
+})
 const loading = ref(false)
 const error = ref<string | null>(null)
 const actionToast = ref<string | null>(null)
@@ -422,11 +620,35 @@ const quickModalTitle = computed(() => {
 
 const isClientMode = computed(() => ['online', 'ipv6-online', 'offline', 'summary'].includes(activeTab.value))
 
-const sortedClients = computed(() => {
-  const list = [...clients.value]
-  list.sort((a, b) => (b[sortBy.value] || 0) - (a[sortBy.value] || 0))
-  return list
-})
+const sortedClients = computed(() =>
+  clientSort.sortRows(
+    clients.value,
+    (c, key) => {
+      switch (key) {
+        case 'name':
+          return c.comment || c.hostname || ''
+        case 'uptime':
+          return c.uptime || c.downtime || ''
+        default:
+          return c[key]
+      }
+    },
+    (key) => {
+      if (key === 'ip_addr') return 'ip'
+      if (key === 'uptime') return 'duration'
+      if (key === 'name' || key === 'mac') return 'auto'
+      return 'number'
+    }
+  )
+)
+
+const sortedAuthRows = computed(() =>
+  authSort.sortRows(
+    authRows.value,
+    (row, key) => row[key],
+    (key) => authColumns.find((c) => c.key === key)?.hint ?? 'auto'
+  )
+)
 
 function openQuickModal(kind: 'terminal' | 'static' | 'qos' | 'mac-block', c: ClientRecordDTO) {
   quickModal.open = true
@@ -728,6 +950,7 @@ onUnmounted(() => {
 .search-input { padding-left: 32px; }
 .toolbar-right { display: flex; gap: 8px; align-items: center; }
 .sort-select { width: auto; min-width: 150px; }
+.sort-dir-btn { white-space: nowrap; }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--divider-line); border-radius: var(--radius-md); }
 .v4-table { width: 100%; border-collapse: collapse; font-size: 13px; }
