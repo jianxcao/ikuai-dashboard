@@ -172,3 +172,32 @@ func TestReadOnlyModeEnvAndYAML(t *testing.T) {
 		t.Fatal("expected IsReadOnly()=false when READ_ONLY=false")
 	}
 }
+
+func TestFindRouterByIDOrName(t *testing.T) {
+	cfg := &AppConfig{
+		ActiveRouterID: "main",
+		Routers: []RouterConfig{
+			{ID: "main", Name: "总部核心网关", URL: "https://192.168.1.1", Mock: true},
+			{ID: "edge-lab", Name: "EdgeLab", URL: "https://10.10.0.1", Mock: true},
+		},
+	}
+
+	if r, ok := cfg.FindRouterByIDOrName("main"); !ok || r.ID != "main" {
+		t.Fatalf("expected exact ID match for main, got ok=%v r=%+v", ok, r)
+	}
+	if r, ok := cfg.FindRouterByIDOrName("总部核心网关"); !ok || r.ID != "main" {
+		t.Fatalf("expected exact Name match, got ok=%v r=%+v", ok, r)
+	}
+	if r, ok := cfg.FindRouterByIDOrName("MAIN"); !ok || r.ID != "main" {
+		t.Fatalf("expected case-insensitive ID match, got ok=%v r=%+v", ok, r)
+	}
+	if r, ok := cfg.FindRouterByIDOrName("edgelab"); !ok || r.ID != "edge-lab" {
+		t.Fatalf("expected case-insensitive Name match, got ok=%v r=%+v", ok, r)
+	}
+	if _, ok := cfg.FindRouterByIDOrName("nonexistent"); ok {
+		t.Fatal("expected unknown router key to return false")
+	}
+	if _, ok := cfg.FindRouterByIDOrName("   "); ok {
+		t.Fatal("expected blank router key to return false")
+	}
+}

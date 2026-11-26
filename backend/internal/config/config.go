@@ -397,6 +397,28 @@ func (c *AppConfig) FindRouter(id string) (RouterConfig, bool) {
 	return RouterConfig{}, false
 }
 
+// FindRouterByIDOrName 按节点 ID 或名称查找节点（先精确匹配，再忽略大小写匹配）。
+func (c *AppConfig) FindRouterByIDOrName(key string) (RouterConfig, bool) {
+	if c == nil {
+		return RouterConfig{}, false
+	}
+	needle := strings.TrimSpace(key)
+	if needle == "" {
+		return RouterConfig{}, false
+	}
+	for _, router := range c.Routers {
+		if router.ID == needle || router.Name == needle {
+			return router, true
+		}
+	}
+	for _, router := range c.Routers {
+		if strings.EqualFold(router.ID, needle) || strings.EqualFold(router.Name, needle) {
+			return router, true
+		}
+	}
+	return RouterConfig{}, false
+}
+
 // Clone 深拷贝配置。
 func (c *AppConfig) Clone() *AppConfig {
 	if c == nil {

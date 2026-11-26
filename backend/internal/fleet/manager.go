@@ -134,19 +134,33 @@ func (m *Manager) Status() map[string]any {
 
 // ResolveRouter resolves either the requested routerID or the active router, returning its V4 client (nil in mock mode).
 func (m *Manager) ResolveRouter(routerID string) (config.RouterConfig, *ikuaiv4.Client, error) {
+	return m.resolveRouterWith(routerID, func(cfg *config.AppConfig, key string) (config.RouterConfig, bool) {
+		return cfg.FindRouter(key)
+	})
+}
+
+// ResolveRouterByKey resolves either a router matching ID/Name or the active router when key is empty.
+func (m *Manager) ResolveRouterByKey(key string) (config.RouterConfig, *ikuaiv4.Client, error) {
+	return m.resolveRouterWith(key, func(cfg *config.AppConfig, k string) (config.RouterConfig, bool) {
+		return cfg.FindRouterByIDOrName(k)
+	})
+}
+
+func (m *Manager) resolveRouterWith(key string, finder func(*config.AppConfig, string) (config.RouterConfig, bool)) (config.RouterConfig, *ikuaiv4.Client, error) {
 	cfg := config.Snapshot()
 	if cfg == nil || len(cfg.Routers) == 0 {
 		return config.RouterConfig{}, nil, ErrUnconfigured
 	}
 
+	trimmed := strings.TrimSpace(key)
 	var (
 		router config.RouterConfig
 		ok     bool
 	)
-	if strings.TrimSpace(routerID) != "" {
-		router, ok = cfg.FindRouter(strings.TrimSpace(routerID))
+	if trimmed != "" {
+		router, ok = finder(cfg, trimmed)
 		if !ok {
-			return config.RouterConfig{}, nil, fmt.Errorf("%w: %s", ErrRouterNotFound, routerID)
+			return config.RouterConfig{}, nil, fmt.Errorf("%w: %s", ErrRouterNotFound, trimmed)
 		}
 	} else {
 		router, ok = cfg.ActiveRouter()

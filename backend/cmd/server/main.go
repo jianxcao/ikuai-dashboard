@@ -93,6 +93,7 @@ func main() {
 		}
 
 		// Preserved monitor endpoints
+		api.GET("/ip", controller.GetWanIPHandler)
 		api.GET("/monitor/interface", controller.GetInterfaceDataHandler)
 		api.GET("/monitor/lan", controller.GetLanClientsHandler)
 		api.GET("/monitor/network-map", controller.GetNetworkMapHandler)
